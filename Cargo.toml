@@ -1,0 +1,24 @@
+[package]
+name        = "tethys-log"
+version     = "0.1.0"
+edition     = "2024"
+description = "Distraction-free note-taking with inline images, video embeds, vim motions, and rich markdown markup"
+license     = "MIT"
+repository  = "https://github.com/Fawz-Haaroon/Tethys-Log"
+homepage    = "https://codeberg.org/Fawz-Haaroon/Tethys-Log"
+readme      = "README.md"
+keywords    = ["notes", "gtk4", "vim", "markdown", "editor"]
+categories  = ["command-line-utilities", "text-editors"]
+authors     = ["Fawz-Haaroon <fawzhaaroon216@gmail.com>"]
+exclude     = ["screenshots/", "*.txt"]
+
+[[bin]]
+name = "tethys-log"
+path = "src/main.rs"
+
+[dependencies]
+gtk        = { package = "gtk4",       version = "0.11", features = ["v4_8"] }
+glib       = "0.22"
+gdk_pixbuf = { package = "gdk-pixbuf", version = "0.22" }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
