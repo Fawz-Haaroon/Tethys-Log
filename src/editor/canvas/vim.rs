@@ -43,19 +43,22 @@ pub enum VimMode {
 }
 
 pub struct VimState {
-    mode:        RefCell<VimMode>,
-    yank:        RefCell<Option<String>>,
-    g_pending:   RefCell<bool>,
-    visual_start: RefCell<Option<i32>>, // buffer char-offset of visual anchor
+    mode:            RefCell<VimMode>,
+    yank:            RefCell<Option<String>>,
+    g_pending:       RefCell<bool>,
+    visual_start:    RefCell<Option<i32>>, // buffer char-offset of visual anchor
+    // Stored so the embed undo pass can locate media files for this note.
+    pub note_identifier: String,
 }
 
 impl VimState {
-    pub fn new() -> Rc<Self> {
+    pub fn new(note_identifier: &str) -> Rc<Self> {
         Rc::new(Self {
-            mode:         RefCell::new(VimMode::Insert),
-            yank:         RefCell::new(None),
-            g_pending:    RefCell::new(false),
-            visual_start: RefCell::new(None),
+            mode:            RefCell::new(VimMode::Insert),
+            yank:            RefCell::new(None),
+            g_pending:       RefCell::new(false),
+            visual_start:    RefCell::new(None),
+            note_identifier: note_identifier.to_string(),
         })
     }
 
@@ -266,10 +269,16 @@ fn handle_normal(
         (false, gdk::Key::y) => { yank_current_line(&buffer, state); }
         (false, gdk::Key::p) => { paste_after_line(&buffer, state); }
         (false, gdk::Key::u) => {
+            // Undo — embed widget restoration is handled by the buffer.connect_undo
+            // signal in surface.rs (idle-deferred so it runs after GTK's RUN_LAST
+            // default handler has actually applied the text change).
             if buffer.can_undo() { buffer.undo(); }
         }
 
-        _ => return glib::Propagation::Proceed,
+        // All other keys in Normal mode are swallowed.
+        // Returning Proceed here would let unbound printable keys insert text
+        // into the buffer while staying in Normal mode.
+        _ => return glib::Propagation::Stop,
     }
 
     scroll_to_cursor(view);

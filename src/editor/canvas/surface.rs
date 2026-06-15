@@ -20,6 +20,7 @@
 use std::rc::Rc;
 
 use gtk::{
+    glib,
     prelude::*,
     Box, FileChooserAction, FileChooserNative, FileFilter, Orientation,
     ResponseType, ScrolledWindow, TextBuffer, TextView, WrapMode,
@@ -36,6 +37,8 @@ use crate::{
                 image_dir_for_note, insert_image_paintable_tagged,
                 insert_video_anchor,
             },
+            embed_undo::restore_orphaned_embeds,
+            highlight::wire_text_highlight,
             image_drop::wire_image_drop,
             syntax::wire_syntax_highlighting,
             url_paste::wire_url_paste,
@@ -61,6 +64,8 @@ impl EditorCanvas {
         on_mode_change: impl Fn(VimMode) + 'static,
     ) -> Self {
         let buffer = TextBuffer::new(None);
+        buffer.set_enable_undo(true);
+
         let view   = TextView::builder()
             .buffer(&buffer)
             .left_margin(14)
@@ -84,20 +89,29 @@ impl EditorCanvas {
             .unwrap_or("");
 
         let image_dir = image_dir_for_note(note.note_identifier());
+
+        // Wrap the initial deserialise in an irreversible action so restoring
+        // saved content does not pollute the undo stack.  The user must not be
+        // able to Ctrl+Z/u back to an empty buffer on a freshly opened note.
+        buffer.begin_irreversible_action();
         deserialise_into_buffer(raw_content, &buffer, &view, &image_dir);
+        buffer.end_irreversible_action();
 
         wire_autosave(&buffer, note.note_identifier().to_string(), note.title().to_string());
         wire_image_drop(&view, note.note_identifier().to_string());
         wire_clipboard_image_paste(&view, note.note_identifier().to_string());
         wire_url_paste(&view);
 
-        // syntax highlighting — debounced 400 ms
+        // Syntax highlighting — debounced 400 ms
         wire_syntax_highlighting(&view);
+
+        // Text highlight — right-click colour swatch popover
+        wire_text_highlight(&view);
 
         // search bar — created BEFORE wire_vim so we can pass search callbacks
         let search = Rc::new(SearchBar::new(buffer.clone()));
 
-        let vim_state = VimState::new();
+        let vim_state = VimState::new(note.note_identifier());
         {
             let s1 = search.clone();
             let s2 = search.clone();
@@ -110,6 +124,27 @@ impl EditorCanvas {
                 move || { s2.go_next(); },
                 move || { s3.go_prev(); },
             );
+        }
+
+        // After every undo, restore embed widgets that GTK's undo engine reverted
+        // to bare U+FFFC code points without a live child anchor.
+        // The idle defers execution until after the RUN_LAST default handler has
+        // applied the text change, so the buffer is in its post-undo state.
+        {
+            let note_id   = note.note_identifier().to_string();
+            let view_weak = view.downgrade();
+            let buf_clone = buffer.clone();
+            buffer.connect_undo(move |_| {
+                let note_id   = note_id.clone();
+                let view_weak = view_weak.clone();
+                let buf       = buf_clone.clone();
+                glib::idle_add_local(move || {
+                    if let Some(view) = view_weak.upgrade() {
+                        restore_orphaned_embeds(&buf, &view, &note_id);
+                    }
+                    glib::ControlFlow::Break
+                });
+            });
         }
 
         let viewport = ScrolledWindow::builder()
