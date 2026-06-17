@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a2030"/>
+      <stop offset="100%" stop-color="#0e1218"/>
+    </linearGradient>
+    <linearGradient id="page" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#2a3345"/>
+      <stop offset="100%" stop-color="#1e2838"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background circle -->
+  <circle cx="64" cy="64" r="60" fill="url(#bg)"/>
+
+  <!-- note page -->
+  <rect x="28" y="22" width="60" height="76" rx="6" ry="6"
+        fill="url(#page)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+
+  <!-- folded corner -->
+  <polygon points="75,22 88,35 75,35" fill="rgba(255,255,255,0.06)"/>
+  <polyline points="75,22 75,35 88,35" fill="none"
+            stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+
+  <!-- text lines -->
+  <rect x="38" y="44" width="34" height="2.5" rx="1.2" fill="#4a8090" opacity="0.9"/>
+  <rect x="38" y="52" width="28" height="2.5" rx="1.2" fill="#3a6070" opacity="0.7"/>
+  <rect x="38" y="60" width="30" height="2.5" rx="1.2" fill="#3a6070" opacity="0.7"/>
+  <rect x="38" y="68" width="22" height="2.5" rx="1.2" fill="#3a6070" opacity="0.5"/>
+
+  <!-- blinking cursor dot -->
+  <rect x="38" y="78" width="7" height="2.5" rx="1.2" fill="#5aa8c0" opacity="0.95"/>
+
+  <!-- outer ring highlight -->
+  <circle cx="64" cy="64" r="59" fill="none"
+          stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+</svg>
