@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Tethys Log
+GenericName=Text Editor
+Comment=A simple text editor with inline images, video, and web embeds
+Exec=@PREFIX@/bin/tethys-log %F
+Icon=com.tethyslog.app
+Terminal=false
+Type=Application
+Categories=Utility;TextEditor;
+MimeType=application/x-tethys-log;text/plain;text/markdown;text/x-markdown;text/x-rust;text/x-python;text/x-csrc;text/x-chdr;text/javascript;text/typescript;text/x-go;text/x-toml;text/x-yaml;
+Keywords=note;text;editor;markdown;vim;
+StartupWMClass=tethys-log
+X-GNOME-UsesNotifications=false
