@@ -1,10 +1,10 @@
 use std::{fs, path::{Path, PathBuf}};
 
-use crate::storage::paths::data_dir;
+use crate::storage::paths::images_dir_for;
 
-// images live in <data_dir>/images/<note_id>/<filename>
-// copying on insert rather than referencing the original path means
-// the note doesn't break if the user moves or deletes the source file.
+// Images live in ~/Tethys-Log/media/images/<note_id>/<filename>.
+// Copying on insert means the note doesn't break if the source file
+// is moved or deleted later.
 pub fn import_image(note_identifier: &str, source: &Path) -> Result<PathBuf, ImageImportError> {
     let filename = source.file_name()
         .ok_or(ImageImportError::NoFilename)?;
@@ -14,7 +14,8 @@ pub fn import_image(note_identifier: &str, source: &Path) -> Result<PathBuf, Ima
 
     let dest = dest_dir.join(filename);
 
-    // don't re-copy if already in our image store — happens if user pastes the same file twice
+    // don't re-copy if already in our image store — happens if the user
+    // pastes or drops the same file more than once
     if dest == source {
         return Ok(dest);
     }
@@ -24,7 +25,7 @@ pub fn import_image(note_identifier: &str, source: &Path) -> Result<PathBuf, Ima
 }
 
 pub fn image_dir_for(note_identifier: &str) -> PathBuf {
-    data_dir().join("images").join(note_identifier)
+    images_dir_for(note_identifier)
 }
 
 pub fn delete_images_for(note_identifier: &str) {

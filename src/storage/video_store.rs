@@ -1,11 +1,11 @@
-// Local video storage — same pattern as image_store.rs.
+// Local video storage — mirrors the image_store pattern.
 //
-// Videos are copied into <data_dir>/videos/<note_id>/<filename> on insert.
+// Videos live in ~/Tethys-Log/media/videos/<note_id>/<filename>.
 // Copying on insert means the note survives moves or deletions of the source.
 
 use std::{fs, path::{Path, PathBuf}};
 
-use crate::storage::paths::data_dir;
+use crate::storage::paths::videos_dir_for;
 
 pub fn import_video(note_identifier: &str, source: &Path) -> Result<PathBuf, VideoImportError> {
     let filename = source.file_name().ok_or(VideoImportError::NoFilename)?;
@@ -24,7 +24,7 @@ pub fn import_video(note_identifier: &str, source: &Path) -> Result<PathBuf, Vid
 }
 
 pub fn video_dir_for(note_identifier: &str) -> PathBuf {
-    data_dir().join("videos").join(note_identifier)
+    videos_dir_for(note_identifier)
 }
 
 pub fn delete_videos_for(note_identifier: &str) {
