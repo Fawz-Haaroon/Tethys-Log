@@ -12,7 +12,7 @@ pub fn attach(window: &impl IsA<gtk::Widget>, tabs: Rc<TabController>, zoom: Rc<
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
 
     keys.connect_key_pressed(move |_, key, _, mods| {
-        let ctrl = mods.contains(gdk::ModifierType::CONTROL_MASK);
+        let ctrl  = mods.contains(gdk::ModifierType::CONTROL_MASK);
         let shift = mods.contains(gdk::ModifierType::SHIFT_MASK);
 
         if !ctrl {
@@ -52,6 +52,11 @@ pub fn attach(window: &impl IsA<gtk::Widget>, tabs: Rc<TabController>, zoom: Rc<
             }
             (false, gdk::Key::f) | (false, gdk::Key::F) => {
                 tabs.toggle_search();
+                glib::Propagation::Stop
+            }
+            // open a foreign file (txt, md, rs, …) as a new tab
+            (false, gdk::Key::o) | (false, gdk::Key::O) => {
+                tabs.open_file_dialog();
                 glib::Propagation::Stop
             }
 
