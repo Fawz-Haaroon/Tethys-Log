@@ -4,7 +4,7 @@ use gtk::{gdk, glib, prelude::*, TextView};
 
 use crate::{
     editor::canvas::codec::{filename_from_path, insert_image_paintable_tagged},
-    storage::paths::data_dir,
+    storage::paths::images_dir_for,
 };
 
 pub fn wire_clipboard_image_paste(view: &TextView, note_identifier: String) {
@@ -66,7 +66,7 @@ pub fn wire_clipboard_image_paste(view: &TextView, note_identifier: String) {
 }
 
 fn save_texture(texture: &gdk::Texture, note_identifier: &str) -> Option<PathBuf> {
-    let dir = data_dir().join("images").join(note_identifier);
+    let dir = images_dir_for(note_identifier);
     std::fs::create_dir_all(&dir).ok()?;
     let micros = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
