@@ -89,8 +89,17 @@ pub fn classify_url(raw: &str) -> Option<EmbedKind> {
                     platform: platform_for_url(src),
                 });
             }
+            // Universal fallback: any iframe with a valid http/https src gets
+            // an embed card — yt-dlp tries to download it; if that fails the
+            // card shows "Unavailable" with the Open button still working.
+            if src.starts_with("https://") || src.starts_with("http://") {
+                return Some(EmbedKind::Generic {
+                    watch_url: src.to_string(),
+                    platform: platform_for_url(src),
+                });
+            }
         }
-        return None; // unknown iframe — paste as text
+        return None;
     }
 
     // ── Plain URL — classify directly ────────────────────────────────────────
