@@ -31,9 +31,11 @@ use gtk::{
 
 use crate::editor::canvas::embed::{platform_for_url, PlatformInfo};
 
-const CARD_WIDTH:    i32 = 520;
-const VIDEO_HEIGHT:  i32 = 300;
+const CARD_WIDTH:    i32 = 860;
+const VIDEO_HEIGHT:  i32 = 490;
 const POLL_INTERVAL: Duration = Duration::from_millis(150);
+const SIZE_STEP_W:   i32 = 80;
+const SIZE_STEP_H:   i32 = 60;
 
 pub struct EmbedCard {
     pub root: Box,
@@ -211,7 +213,7 @@ fn wire_play_button(
                     video.set_size_request(CARD_WIDTH, VIDEO_HEIGHT);
                     video.set_autoplay(true);
                     vb.append(&video);
-                    add_video_resize_grip(&vb, &video);
+                    add_video_controls(&vb, &video);
 
                     rv.set_reveal_child(true);
                     pbtn.set_label("■  Stop");
@@ -320,32 +322,99 @@ fn download_via_yt_dlp(url: &str) -> Option<PathBuf> {
 }
 
 
-// ── resize grip for the inline player ────────────────────────────────────────
-// Uses a DrawingArea (22×22 px) instead of a Label so the hit area is large
-// enough to grab reliably.  PropagationPhase::Capture prevents the drag from
-// fighting with GtkTextView's built-in text-selection gesture (which was
-// causing text to get highlighted instead of the video being resized).
-fn add_video_resize_grip(container: &Box, video: &Video) {
+// ── unified video control bar ─────────────────────────────────────────────────
+// One slim horizontal row: [«10s] [«5s] [5s»] [10s»] [⟲] ··· [W-] [W+] [H-] [H+] [grip]
+// MediaStream seek uses microseconds; duration < 0 means unknown (live/unsupported).
+const SEEK_5_US:  i64 =  5_000_000;
+const SEEK_10_US: i64 = 10_000_000;
+
+fn add_video_controls(container: &Box, video: &Video) {
     use crate::editor::canvas::image_widget::make_resize_grip;
 
-    let grip_row = Box::builder().orientation(Orientation::Horizontal).build();
-    let spacer   = Label::new(None);
-    spacer.set_hexpand(true);
+    let bar = Box::builder()
+        .orientation(Orientation::Horizontal)
+        .spacing(3)
+        .margin_top(3)
+        .margin_bottom(2)
+        .margin_start(4)
+        .margin_end(4)
+        .build();
+    bar.add_css_class("embed-ctrl-bar");
 
+    // ── seek ──────────────────────────────────────────────────────────────────
+    let seek_defs: &[(&str, i64)] = &[
+        ("«10s", -SEEK_10_US),
+        ("«5s",  -SEEK_5_US),
+        ("5s»",   SEEK_5_US),
+        ("10s»",  SEEK_10_US),
+    ];
+    for &(lbl, delta) in seek_defs {
+        let btn = Button::with_label(lbl);
+        btn.add_css_class("embed-ctrl-btn");
+        let vid = video.clone();
+        btn.connect_clicked(move |_| seek_video(&vid, delta));
+        bar.append(&btn);
+    }
+
+    // thin vertical divider
+    let div = gtk::Separator::new(Orientation::Vertical);
+    div.set_margin_start(3);
+    div.set_margin_end(3);
+    bar.append(&div);
+
+    // ── loop toggle ───────────────────────────────────────────────────────────
+    let loop_btn = Button::with_label("⟲");
+    loop_btn.add_css_class("embed-ctrl-btn");
+    loop_btn.set_tooltip_text(Some("Toggle loop"));
+    {
+        let vid    = video.clone();
+        let active = Rc::new(Cell::new(false));
+        loop_btn.connect_clicked(move |b| {
+            let on = !active.get();
+            active.set(on);
+            vid.set_loop(on);
+            if on { b.add_css_class("embed-ctrl-btn-on"); }
+            else  { b.remove_css_class("embed-ctrl-btn-on"); }
+        });
+    }
+    bar.append(&loop_btn);
+
+    // expanding gap — pushes resize group to the right
+    let gap = Label::new(None);
+    gap.set_hexpand(true);
+    bar.append(&gap);
+
+    // ── resize step buttons ───────────────────────────────────────────────────
+    // (dw, dh) applied to allocated size; negative clamped to 200 / 120 min
+    let resize_defs: &[(&str, i32, i32)] = &[
+        ("W-", -SIZE_STEP_W,  0),
+        ("W+",  SIZE_STEP_W,  0),
+        ("H-",  0, -SIZE_STEP_H),
+        ("H+",  0,  SIZE_STEP_H),
+    ];
+    for &(lbl, dw, dh) in resize_defs {
+        let btn = Button::with_label(lbl);
+        btn.add_css_class("embed-ctrl-btn");
+        let vid = video.clone();
+        btn.connect_clicked(move |_| {
+            let w = vid.allocated_width();
+            let h = vid.allocated_height();
+            vid.set_size_request((w + dw).max(200), (h + dh).max(120));
+        });
+        bar.append(&btn);
+    }
+
+    // ── drag-to-resize grip ───────────────────────────────────────────────────
     let grip = make_resize_grip();
-    grip_row.append(&spacer);
-    grip_row.append(&grip);
-    container.append(&grip_row);
+    bar.append(&grip);
 
     let drag = GestureDrag::new();
     drag.set_propagation_phase(gtk::PropagationPhase::Capture);
-
     let start: Rc<Cell<(i32, i32)>> = Rc::new(Cell::new((0, 0)));
     let sa = start.clone();
     let sb = start;
     let va = video.clone();
     let vb = video.clone();
-
     drag.connect_drag_begin(move |_, _, _| {
         sa.set((va.allocated_width(), va.allocated_height()));
     });
@@ -354,6 +423,17 @@ fn add_video_resize_grip(container: &Box, video: &Video) {
         vb.set_size_request((sw + dx as i32).max(200), (sh + dy as i32).max(120));
     });
     grip.add_controller(drag);
+
+    container.append(&bar);
+}
+
+fn seek_video(video: &Video, delta_us: i64) {
+    let Some(ms) = video.media_stream() else { return };
+    let now      = ms.timestamp();
+    let dur      = ms.duration();
+    let target   = now + delta_us;
+    let clamped  = if dur > 0 { target.max(0).min(dur) } else { target.max(0) };
+    ms.seek(clamped);
 }
 
 
@@ -425,5 +505,35 @@ pub const EMBED_CSS: &str = r#"
 .embed-video-box {
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 0 0 6px 6px;
+}
+
+.embed-ctrl-bar {
+    background: rgba(0,0,0,0.18);
+    border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+.embed-ctrl-btn {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 4px;
+    box-shadow: none;
+    color: #7a8a9a;
+    font-family: monospace;
+    font-size: 8pt;
+    font-weight: 700;
+    min-height: 0;
+    min-width: 0;
+    padding: 1px 6px;
+}
+
+.embed-ctrl-btn:hover {
+    background: rgba(255,255,255,0.12);
+    color: #b8c8d8;
+}
+
+.embed-ctrl-btn-on {
+    background: rgba(97,175,239,0.18);
+    border-color: rgba(97,175,239,0.38);
+    color: #61afef;
 }
 "#;
