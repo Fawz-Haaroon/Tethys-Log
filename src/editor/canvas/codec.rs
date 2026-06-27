@@ -121,12 +121,13 @@ pub fn deserialise_into_buffer(
                     }
                     _ => {
                         if let Some(filename) = tag_content.strip_prefix(VIDEO_TAG) {
-                            let note_id   = image_dir.file_name().unwrap_or_default();
-                            let video_dir = image_dir.parent()
-                                .and_then(|p| p.parent())
-                                .unwrap_or(image_dir)
-                                .join("videos")
-                                .join(note_id);
+                            // derive the note id from the image_dir path (last component)
+                            // then resolve the video path through the canonical helper
+                            let note_id = image_dir
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("");
+                            let video_dir = crate::storage::paths::videos_dir_for(note_id);
                             let full_path = video_dir.join(filename);
                             insert_video_anchor(buffer, view, &mut iter, &full_path, filename);
                         }
@@ -257,13 +258,9 @@ pub fn filename_from_path(path: &std::path::Path) -> Option<String> {
 }
 
 pub fn image_dir_for_note(note_identifier: &str) -> PathBuf {
-    crate::storage::paths::data_dir()
-        .join("images")
-        .join(note_identifier)
+    crate::storage::paths::images_dir_for(note_identifier)
 }
 
 pub fn video_dir_for_note(note_identifier: &str) -> PathBuf {
-    crate::storage::paths::data_dir()
-        .join("videos")
-        .join(note_identifier)
+    crate::storage::paths::videos_dir_for(note_identifier)
 }
