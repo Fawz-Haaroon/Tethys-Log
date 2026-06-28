@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
-use gtk::{prelude::*, Box, Button, Label, ScrolledWindow, Stack};
+use gtk::{gio, glib, prelude::*, Box, Button, Label, ScrolledWindow, Stack};
 
 use crate::{
     document::{note::NoteDocument, workspace::WorkspaceDocument},
@@ -218,5 +218,95 @@ impl TabController {
                 );
             }
         }
+    }
+
+    // ── File import ───────────────────────────────────────────────────────────
+
+    /// Open a native file-chooser dialog and import the selected text file as a new tab.
+    pub fn open_file_dialog(&self) {
+        let parent = self.stack
+            .root()
+            .and_then(|r| r.downcast::<gtk::Window>().ok());
+
+        let dialog = gtk::FileChooserNative::new(
+            Some("Open File"),
+            parent.as_ref(),
+            gtk::FileChooserAction::Open,
+            Some("Open"),
+            Some("Cancel"),
+        );
+        dialog.set_modal(true);
+
+        let filter = gtk::FileFilter::new();
+        filter.set_name(Some("Text files"));
+        for mime in &["text/plain", "text/markdown", "text/x-rust",
+                      "text/x-python", "text/javascript", "text/x-go",
+                      "text/x-toml", "text/x-yaml"] {
+            filter.add_mime_type(mime);
+        }
+        dialog.add_filter(&filter);
+
+        // clone the Rc fields needed inside the response callback
+        let workspace       = Rc::clone(&self.workspace);
+        let tab_list        = Rc::clone(&self.tab_list);
+        let recently_closed = Rc::clone(&self.recently_closed);
+        let canvases        = Rc::clone(&self.canvases);
+        let stack           = self.stack.clone();
+        let tab_inner       = self.tab_inner.clone();
+        let tab_scroll      = self.tab_scroll.clone();
+        let subtitle        = self.subtitle.clone();
+        let vim_pill        = Rc::clone(&self.vim_pill);
+        let apply_accent    = self.apply_accent.clone();
+
+        dialog.connect_response(move |d, response| {
+            if response != gtk::ResponseType::Accept { return; }
+
+            let path: std::path::PathBuf = match d.file().and_then(|f| f.path()) {
+                Some(p) => p,
+                None    => return,
+            };
+
+            let doc = match crate::storage::import::import_text_file(&path) {
+                Ok(d)  => d,
+                Err(e) => {
+                    eprintln!("tethys-log: import error: {e}");
+                    return;
+                }
+            };
+
+            let id    = doc.note_identifier().to_string();
+            let title = doc.title().to_string();
+
+            workspace.borrow_mut().open_tab(id.clone(), title.clone());
+
+            let pill_weak = vim_pill.downgrade();
+            let ac        = apply_accent.clone();
+            let canvas = EditorCanvas::new(&doc, move |mode: VimMode| {
+                if let Some(pill) = pill_weak.upgrade() {
+                    apply_vim_mode_to_pill(&pill, mode);
+                }
+            });
+            stack.add_named(canvas.widget(), Some(&id));
+            canvases.borrow_mut().insert(canvas);
+
+            let tab = build_tab(
+                &title, id.clone(),
+                &stack, &tab_list, &workspace,
+                &tab_inner, &recently_closed, &subtitle,
+                ac,
+            );
+            tab_inner.append(&tab);
+            tab_list.borrow_mut().push(tab);
+
+            let new_index = workspace.borrow().open_tabs().len() - 1;
+            workspace.borrow_mut().switch_to(new_index);
+            stack.set_visible_child_name(&id);
+            mark_active(&tab_list, new_index);
+            update_path_bar(&subtitle, &workspace);
+            scroll_tab_into_view(&tab_scroll, &tab_list, new_index);
+            SessionStore::persist(&workspace.borrow());
+        });
+
+        dialog.show();
     }
 }
