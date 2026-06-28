@@ -50,17 +50,37 @@ pub fn update_path_bar(label: &Label, workspace: &Rc<RefCell<WorkspaceDocument>>
     let text = {
         let ws = workspace.borrow();
         ws.active_tab().map(|t| {
-            let full_path = note_path(t.note_identifier());
-            let home = std::env::var("HOME").unwrap_or_default();
-            let path  = full_path.to_string_lossy().replacen(&home, "~", 1);
+            let title = t.title().to_string();
+            let home  = std::env::var("HOME").unwrap_or_default();
 
-            let title      = t.title().to_string();
             let is_default = title.is_empty()
                 || title.starts_with("New Document")
-                || title.starts_with("Untitled");
+                || title.starts_with("Untitled")
+                || title.starts_with("New Note");
 
-            if is_default { path } else { format!("{title}  —  {path}") }
+            if is_default {
+                // Fallback: show the UUID-based path for unnamed notes
+                let full_path = note_path(t.note_identifier());
+                full_path.to_string_lossy().replacen(&home, "~", 1)
+            } else {
+                // Show a friendly title-based path — matches the shadow file
+                // written by NoteStore::persist alongside the UUID file.
+                let slug = slugify(&title);
+                let friendly = format!("~/Tethys-Log/notes/{slug}.tlog");
+                format!("{title}  —  {friendly}")
+            }
         }).unwrap_or_default()
     };
     label.set_text(&text);
+}
+
+fn slugify(title: &str) -> String {
+    title
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
