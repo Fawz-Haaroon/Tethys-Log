@@ -8,7 +8,7 @@ use gtk::{
 use crate::{
     document::workspace::WorkspaceDocument,
     editor::tabs::active::{update_path_bar, tab_index_of},
-    storage::session::SessionStore,
+    storage::{notes::NoteStore, session::SessionStore},
 };
 
 pub fn show_rename_dialog(
@@ -69,6 +69,9 @@ pub fn show_rename_dialog(
         if response == ResponseType::Accept {
             let trimmed = entry.text().trim().to_string();
             if !trimmed.is_empty() {
+                // Remove the title-named shadow file for the old name so the
+                // file manager shows the new name only after the next autosave.
+                NoteStore::cleanup_title_file(&current);
                 let index = tab_index_of(&tab_list, &shell);
                 workspace.borrow_mut().rename_tab(index, trimmed.clone());
                 title_btn.set_label(&trimmed);
