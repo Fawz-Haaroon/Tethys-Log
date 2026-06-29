@@ -55,6 +55,8 @@ pub fn load_base_theme() {
     load_sheet(crate::editor::theme::ATTACH);
     load_sheet(crate::editor::canvas::embed_widget::EMBED_CSS);
     load_sheet(crate::editor::canvas::video_widget::VIDEO_CSS);
+    load_sheet(crate::editor::canvas::image_widget::IMAGE_CSS);
+    load_sheet(crate::editor::canvas::highlight::HIGHLIGHT_CSS);
 }
 
 fn load_sheet(css: &str) {
