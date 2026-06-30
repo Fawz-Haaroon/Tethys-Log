@@ -27,18 +27,20 @@ textview {
     border: none;
     color: #c0c0c0;
     caret-color: #d8d8d8;
-    font-family: "Adwaita Mono", "Cascadia Mono", "JetBrains Mono", monospace;
+    font-family: "Adwaita Mono", monospace;
     font-size: 11pt;
     font-weight: 400;
+    line-height: 1.2;
 }
 textview:focus { color: #c8c8c8; }
 
 text {
     background: transparent;
     color: #c0c0c0;
-    font-family: "Adwaita Mono", "Cascadia Mono", "JetBrains Mono", monospace;
+    font-family: "Adwaita Mono", monospace;
     font-size: 11pt;
     font-weight: 400;
+    line-height: 1.2;
 }
 text selection {
     background: rgba(80, 130, 180, 0.36);
