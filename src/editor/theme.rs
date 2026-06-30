@@ -9,10 +9,10 @@
 
 pub const BASE: &str = r#"
 window {
-    background: rgba(18, 22, 30, 0.82);
+    background: rgba(28, 28, 28, 0.80);
 }
 window:focus {
-    background: rgba(20, 25, 34, 0.92);
+    background: rgba(30, 30, 30, 0.84);
 }
 
 scrolledwindow {
@@ -25,24 +25,24 @@ scrolledwindow {
 textview {
     background: transparent;
     border: none;
-    color: #a8b2bc;
-    caret-color: #c8d2da;
+    color: #c0c0c0;
+    caret-color: #d8d8d8;
     font-family: "Adwaita Mono", "Cascadia Mono", "JetBrains Mono", monospace;
-    font-size: 10.5pt;
+    font-size: 11pt;
     font-weight: 400;
 }
-textview:focus { color: #b8c2cc; }
+textview:focus { color: #c8c8c8; }
 
 text {
     background: transparent;
-    color: #a8b2bc;
+    color: #c0c0c0;
     font-family: "Adwaita Mono", "Cascadia Mono", "JetBrains Mono", monospace;
-    font-size: 10.5pt;
+    font-size: 11pt;
     font-weight: 400;
 }
 text selection {
     background: rgba(80, 130, 180, 0.36);
-    color: #d8e2ea;
+    color: #e8e8e8;
 }
 
 scrollbar              { opacity: 0.10; }
@@ -52,12 +52,12 @@ scrollbar:hover        { opacity: 0.24; }
 /* ── Tab bar ─────────────────────────────────────────────────────────────── */
 
 .tab-row {
-    background: rgba(10, 13, 18, 0.94);
+    background: rgba(22, 22, 22, 0.94);
     border-bottom: 2px solid rgba(255,255,255,0.07);
     padding: 5px 4px 0 4px;
 }
 window:focus .tab-row {
-    background: rgba(11, 14, 20, 0.97);
+    background: rgba(24, 24, 24, 0.97);
     border-bottom-color: rgba(255,255,255,0.10);
 }
 
@@ -71,8 +71,8 @@ window:focus .tab-row {
     min-width: 0;
 }
 .tab:hover       { background: rgba(255,255,255,0.05); }
-.tab-active      { background: rgba(20,25,34,0.98); border-color: rgba(255,255,255,0.09); }
-window:focus .tab-active { background: rgba(20,25,34,1.0); border-color: rgba(255,255,255,0.14); }
+.tab-active      { background: rgba(30,30,30,0.98); border-color: rgba(255,255,255,0.09); }
+window:focus .tab-active { background: rgba(30,30,30,1.0); border-color: rgba(255,255,255,0.14); }
 
 .tab-title {
     background: transparent;
@@ -236,7 +236,7 @@ window:focus .note-path-label { color: #4a9ab0; }
 
 pub const SEARCH: &str = r#"
 .search-bar {
-    background: rgba(11, 14, 20, 0.96);
+    background: rgba(22, 22, 22, 0.96);
     border-bottom: 1px solid rgba(255,255,255,0.07);
     padding: 4px 8px;
 }
