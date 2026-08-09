@@ -1,4 +1,4 @@
-use crate::document::{id::new_note_id, tab::WorkspaceTab};
+use crate::document::{id::new_note_id, tab::{TabSpec, WorkspaceTab}};
 
 pub struct WorkspaceDocument {
     open_tabs: Vec<WorkspaceTab>,
@@ -10,19 +10,13 @@ impl WorkspaceDocument {
         Self { open_tabs: Vec::new(), active_tab_index: 0 }
     }
 
-    pub fn open_tab(&mut self, note_identifier: String, title: String) {
-        self.open_tabs.push(WorkspaceTab::new(note_identifier, title));
-    }
-
-    pub fn open_tab_with_accent(
-        &mut self,
-        note_identifier: String,
-        title: String,
-        accent: Option<String>,
-    ) {
-        let mut tab = WorkspaceTab::new(note_identifier, title);
-        tab.set_accent(accent);
-        self.open_tabs.push(tab);
+    /// Registers a new tab from `spec` -- does not switch to it or persist
+    /// the session; callers that want the tab focused immediately do that
+    /// explicitly afterwards (see TabController::present_tab). Restoring a
+    /// whole session on startup, for instance, opens every tab first and
+    /// only switches once at the end.
+    pub fn open_tab(&mut self, spec: TabSpec) {
+        self.open_tabs.push(spec.into_tab());
     }
 
     pub fn create_new_document(&mut self) -> &WorkspaceTab {
