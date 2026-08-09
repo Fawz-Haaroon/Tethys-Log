@@ -19,11 +19,21 @@
 //   A raw URL on the known list not caught by the above (Generic fallback)
 //
 // ── On-disk format ────────────────────────────────────────────────────────────
-//   \x01embed:<watch_url>\x01
+//   \u{E001}embed:<watch_url>\u{E001}
 //   Only the watch_url is persisted; platform branding is re-derived at load.
+//
+//   EMBED_OPEN lives in the Unicode Private Use Area rather than a C0
+//   control character. Notes saved before this change used \x01 (SOH) --
+//   see EMBED_OPEN_LEGACY, which codec::deserialise_into_buffer still
+//   recognises on read so those notes keep working. The reason for the
+//   change: a NUL, SOH, or STX byte anywhere in a file is exactly what
+//   makes `file`, `git`, `less`, and GitHub's own viewer decide the file is
+//   binary instead of text -- which is what a .tlog note built before this
+//   fix looks like to every tool except Tethys-Log itself.
 
-pub const EMBED_OPEN: char = '\x01';
-pub const EMBED_TAG:  &str = "embed:";
+pub const EMBED_OPEN:        char = '\u{E001}';
+pub const EMBED_OPEN_LEGACY: char = '\x01';
+pub const EMBED_TAG:         &str = "embed:";
 
 #[derive(Clone, Copy)]
 pub struct PlatformInfo {

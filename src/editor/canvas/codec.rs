@@ -3,16 +3,32 @@ use std::path::PathBuf;
 use gtk::{prelude::*, TextBuffer, TextView};
 
 use crate::editor::canvas::{
-    embed::{parse_embed_tag, watch_url_from_embed_src, EMBED_OPEN, EMBED_TAG},
+    embed::{parse_embed_tag, watch_url_from_embed_src, EMBED_OPEN, EMBED_OPEN_LEGACY, EMBED_TAG},
     embed_widget::EmbedCard,
     image_widget::ImageWidget,
 };
 
-const VIDEO_OPEN: char = '\x02';
-const VIDEO_TAG:  &str = "video:";
+// Sentinel characters bracket an embedded image/video/embed reference in the
+// serialized buffer text, e.g. `\u{E000}img:photo.png\u{E000}`. They live in
+// the Unicode Private Use Area -- valid, unremarkable UTF-8 text -- rather
+// than as C0 control characters. A NUL, SOH, or STX byte anywhere in a file
+// is exactly what makes `file`, `git`, `less`, and GitHub's own viewer treat
+// it as binary instead of text, which is what every .tlog note looked like
+// to every tool except Tethys-Log itself before this change.
+//
+// The _LEGACY constants are the original control-character sentinels.
+// deserialise_into_buffer still recognises them on read so notes saved
+// before this fix keep opening correctly; every save from here on writes
+// only the new sentinels, so each note upgrades itself the first time it's
+// touched. Read old-or-new, write new-only -- the standard shape for a
+// backward-compatible file-format migration.
+const VIDEO_OPEN:        char = '\u{E002}';
+const VIDEO_OPEN_LEGACY: char = '\x02';
+const VIDEO_TAG:         &str = "video:";
 
-const IMG_OPEN: char = '\x00';
-const IMG_TAG:  &str = "img:";
+const IMG_OPEN:        char = '\u{E000}';
+const IMG_OPEN_LEGACY: char = '\x00';
+const IMG_TAG:         &str = "img:";
 
 pub fn serialize_buffer(buffer: &TextBuffer) -> String {
     let mut out  = String::new();
@@ -67,6 +83,20 @@ pub fn serialize_buffer(buffer: &TextBuffer) -> String {
     out
 }
 
+/// Finds the earlier of a sentinel's current and legacy form in `text`,
+/// returning its byte offset and which literal character was found there.
+/// The caller re-uses that exact character to find the matching close, so a
+/// note written entirely in one form (the normal case -- see the migration
+/// note above) round-trips correctly even though both forms are accepted.
+fn nearest_sentinel(text: &str, current: char, legacy: char) -> Option<(usize, char)> {
+    match (text.find(current), text.find(legacy)) {
+        (Some(a), Some(b)) => Some(if a <= b { (a, current) } else { (b, legacy) }),
+        (Some(a), None)    => Some((a, current)),
+        (None, Some(b))    => Some((b, legacy)),
+        (None, None)       => None,
+    }
+}
+
 pub fn deserialise_into_buffer(
     raw:       &str,
     buffer:    &TextBuffer,
@@ -78,18 +108,18 @@ pub fn deserialise_into_buffer(
     let mut rest = raw;
 
     while !rest.is_empty() {
-        let img_pos   = rest.find(IMG_OPEN);
-        let embed_pos = rest.find(EMBED_OPEN);
-        let video_pos = rest.find(VIDEO_OPEN);
+        let img_hit   = nearest_sentinel(rest, IMG_OPEN, IMG_OPEN_LEGACY);
+        let embed_hit = nearest_sentinel(rest, EMBED_OPEN, EMBED_OPEN_LEGACY);
+        let video_hit = nearest_sentinel(rest, VIDEO_OPEN, VIDEO_OPEN_LEGACY);
 
-        let next: Option<(usize, u8)> = [
-            img_pos.map(|p|   (p, 0u8)),
-            embed_pos.map(|p| (p, 1u8)),
-            video_pos.map(|p| (p, 2u8)),
+        let next: Option<(usize, char, u8)> = [
+            img_hit.map(|(p, c)|   (p, c, 0u8)),
+            embed_hit.map(|(p, c)| (p, c, 1u8)),
+            video_hit.map(|(p, c)| (p, c, 2u8)),
         ]
-        .into_iter().flatten().min_by_key(|(pos, _)| *pos);
+        .into_iter().flatten().min_by_key(|(pos, _, _)| *pos);
 
-        let (marker_start, kind) = match next {
+        let (marker_start, sentinel, kind) = match next {
             None    => { buffer.insert(&mut iter, rest); break; }
             Some(n) => n,
         };
@@ -98,7 +128,6 @@ pub fn deserialise_into_buffer(
             buffer.insert(&mut iter, &rest[..marker_start]);
         }
 
-        let sentinel   = match kind { 0 => IMG_OPEN, 1 => EMBED_OPEN, _ => VIDEO_OPEN };
         let after_open = &rest[marker_start + sentinel.len_utf8()..];
 
         match after_open.find(sentinel) {
