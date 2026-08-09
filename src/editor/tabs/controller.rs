@@ -1,23 +1,23 @@
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use std::{cell::RefCell, collections::VecDeque, path::Path, rc::Rc};
 
-use gtk::{gio, glib, prelude::*, Box, Button, Label, ScrolledWindow, Stack};
+use gtk::{prelude::*, Box, Button, Label, ScrolledWindow, Stack};
 
 use crate::{
-    document::{note::NoteDocument, workspace::WorkspaceDocument},
+    document::{note::NoteDocument, tab::TabSpec, workspace::WorkspaceDocument},
     editor::{
-        canvas::{vim::VimMode, EditorCanvas},
         tabs::{
             active::{mark_active, update_path_bar, tab_title_btn},
             canvas_store::CanvasStore,
             close::close_tab,
             closed::ClosedTab,
+            open::present_tab_ui,
             rename::show_rename_dialog,
             scroll::scroll_tab_into_view,
-            widget::{build_tab, ApplyAccentFn},
+            widget::ApplyAccentFn,
         },
         workspace_view::apply_vim_mode_to_pill,
     },
-    storage::{notes::NoteStore, session::SessionStore},
+    storage::{notes::NoteStore, open as storage_open, session::SessionStore},
 };
 
 pub struct TabController {
@@ -36,19 +36,22 @@ pub struct TabController {
 
 impl TabController {
 
-    fn make_canvas(&self, note: &NoteDocument) -> EditorCanvas {
-        let pill_weak = self.vim_pill.downgrade();
-        EditorCanvas::new(note, move |mode: VimMode| {
-            if let Some(pill) = pill_weak.upgrade() {
-                apply_vim_mode_to_pill(&pill, mode);
-            }
-        })
-    }
-
     fn active_id(&self) -> Option<String> {
         self.workspace.borrow()
             .active_tab()
             .map(|t| t.note_identifier().to_string())
+    }
+
+    /// Wires `doc` into the stack and tab strip as the new active tab.
+    /// Callers must have already registered its entry in the workspace
+    /// model -- see present_tab_ui's doc comment.
+    fn present_tab(&self, doc: &NoteDocument) {
+        present_tab_ui(
+            doc, &self.vim_pill,
+            &self.workspace, &self.tab_list, &self.stack, &self.tab_inner,
+            &self.tab_scroll, &self.recently_closed, &self.canvases, &self.subtitle,
+            self.apply_accent.clone(),
+        );
     }
 
     // ── Attach file helpers ───────────────────────────────────────────────────
@@ -97,62 +100,24 @@ impl TabController {
             (tab.note_identifier().to_string(), tab.title().to_string())
         };
 
-        let note   = NoteDocument::new(id.clone(), title.clone());
+        let note = NoteDocument::new(id, title);
         NoteStore::persist(&note);
-
-        let canvas = self.make_canvas(&note);
-        self.stack.add_named(canvas.widget(), Some(&id));
-        self.canvases.borrow_mut().insert(canvas);
-
-        let tab = build_tab(
-            &title, id.clone(),
-            &self.stack, &self.tab_list, &self.workspace,
-            &self.tab_inner, &self.recently_closed, &self.subtitle,
-            self.apply_accent.clone(),
-        );
-        self.tab_inner.append(&tab);
-        self.tab_list.borrow_mut().push(tab);
-
-        let new_index = self.workspace.borrow().open_tabs().len() - 1;
-        self.workspace.borrow_mut().switch_to(new_index);
-        self.stack.set_visible_child_name(&id);
-        mark_active(&self.tab_list, new_index);
-        update_path_bar(&self.subtitle, &self.workspace);
-        scroll_tab_into_view(&self.tab_scroll, &self.tab_list, new_index);
-        SessionStore::persist(&self.workspace.borrow());
+        self.present_tab(&note);
     }
 
     pub fn reopen_last_closed(&self) {
         let entry = self.recently_closed.borrow_mut().pop_front();
         if let Some(closed) = entry {
-            let note = NoteStore::load(&closed.note_identifier, &closed.title);
+            let note = NoteStore::load(
+                &closed.note_identifier, &closed.title, closed.source_path.as_deref(),
+            );
             NoteStore::persist(&note);
 
-            let canvas = self.make_canvas(&note);
-            self.stack.add_named(canvas.widget(), Some(&closed.note_identifier));
-            self.canvases.borrow_mut().insert(canvas);
-
             self.workspace.borrow_mut().open_tab(
-                closed.note_identifier.clone(),
-                closed.title.clone(),
+                TabSpec::new(closed.note_identifier.clone(), closed.title.clone())
+                    .with_source_path(closed.source_path.clone()),
             );
-
-            let tab = build_tab(
-                &closed.title, closed.note_identifier.clone(),
-                &self.stack, &self.tab_list, &self.workspace,
-                &self.tab_inner, &self.recently_closed, &self.subtitle,
-                self.apply_accent.clone(),
-            );
-            self.tab_inner.append(&tab);
-            self.tab_list.borrow_mut().push(tab);
-
-            let new_index = self.workspace.borrow().open_tabs().len() - 1;
-            self.workspace.borrow_mut().switch_to(new_index);
-            self.stack.set_visible_child_name(&closed.note_identifier);
-            mark_active(&self.tab_list, new_index);
-            update_path_bar(&self.subtitle, &self.workspace);
-            scroll_tab_into_view(&self.tab_scroll, &self.tab_list, new_index);
-            SessionStore::persist(&self.workspace.borrow());
+            self.present_tab(&note);
         }
     }
 
@@ -220,9 +185,43 @@ impl TabController {
         }
     }
 
-    // ── File import ───────────────────────────────────────────────────────────
+    // ── Opening files ────────────────────────────────────────────────────────
 
-    /// Open a native file-chooser dialog and import the selected text file as a new tab.
+    /// Opens `path` as a tab -- the entry point CLI arguments and
+    /// file-manager "Open With" activations reach through app::boot, and
+    /// what the Open-file dialog below hands off to as well. A `.tlog`
+    /// path that's already open focuses its existing tab instead of
+    /// duplicating it (see storage::open for why this dedup only applies
+    /// to the native format).
+    pub fn open_path(&self, path: &Path) {
+        if storage_open::is_native_format(path) {
+            let id = storage_open::identifier_for_native_path(path);
+            let already_open = self.workspace.borrow()
+                .open_tabs().iter()
+                .position(|t| t.note_identifier() == id);
+            if let Some(index) = already_open {
+                self.jump_to(index);
+                return;
+            }
+        }
+
+        match storage_open::open_path(path) {
+            Ok(doc) => {
+                NoteStore::persist(&doc);
+                self.workspace.borrow_mut().open_tab(
+                    TabSpec::new(doc.note_identifier().to_string(), doc.title().to_string())
+                        .with_source_path(doc.source_path().map(|p| p.to_path_buf())),
+                );
+                self.present_tab(&doc);
+            }
+            Err(e) => eprintln!("tethys-log: could not open {}: {e}", path.display()),
+        }
+    }
+
+    /// Open a native file-chooser dialog and open the selected file as a
+    /// new tab -- same dispatch rule as open_path (native .tlog in place,
+    /// everything else imported as a managed copy), just reached by
+    /// browsing instead of a path the caller already had.
     pub fn open_file_dialog(&self) {
         let parent = self.stack
             .root()
@@ -239,6 +238,8 @@ impl TabController {
 
         let filter = gtk::FileFilter::new();
         filter.set_name(Some("Text files"));
+        filter.add_pattern("*.tlog");
+        filter.add_mime_type("application/x-tethys-log");
         for mime in &["text/plain", "text/markdown", "text/x-rust",
                       "text/x-python", "text/javascript", "text/x-go",
                       "text/x-toml", "text/x-yaml"] {
@@ -246,7 +247,10 @@ impl TabController {
         }
         dialog.add_filter(&filter);
 
-        // clone the Rc fields needed inside the response callback
+        // clone the Rc fields needed inside the response callback -- this
+        // closure is 'static (owned by the dialog until it's dismissed), so
+        // it can't borrow &self; present_tab_ui takes the same fields
+        // directly for exactly this reason.
         let workspace       = Rc::clone(&self.workspace);
         let tab_list        = Rc::clone(&self.tab_list);
         let recently_closed = Rc::clone(&self.recently_closed);
@@ -266,45 +270,26 @@ impl TabController {
                 None    => return,
             };
 
-            let doc = match crate::storage::import::import_text_file(&path) {
+            let doc = match storage_open::open_path(&path) {
                 Ok(d)  => d,
                 Err(e) => {
-                    eprintln!("tethys-log: import error: {e}");
+                    eprintln!("tethys-log: could not open {}: {e}", path.display());
                     return;
                 }
             };
 
-            let id    = doc.note_identifier().to_string();
-            let title = doc.title().to_string();
-
-            workspace.borrow_mut().open_tab(id.clone(), title.clone());
-
-            let pill_weak = vim_pill.downgrade();
-            let ac        = apply_accent.clone();
-            let canvas = EditorCanvas::new(&doc, move |mode: VimMode| {
-                if let Some(pill) = pill_weak.upgrade() {
-                    apply_vim_mode_to_pill(&pill, mode);
-                }
-            });
-            stack.add_named(canvas.widget(), Some(&id));
-            canvases.borrow_mut().insert(canvas);
-
-            let tab = build_tab(
-                &title, id.clone(),
-                &stack, &tab_list, &workspace,
-                &tab_inner, &recently_closed, &subtitle,
-                ac,
+            NoteStore::persist(&doc);
+            workspace.borrow_mut().open_tab(
+                TabSpec::new(doc.note_identifier().to_string(), doc.title().to_string())
+                    .with_source_path(doc.source_path().map(|p| p.to_path_buf())),
             );
-            tab_inner.append(&tab);
-            tab_list.borrow_mut().push(tab);
 
-            let new_index = workspace.borrow().open_tabs().len() - 1;
-            workspace.borrow_mut().switch_to(new_index);
-            stack.set_visible_child_name(&id);
-            mark_active(&tab_list, new_index);
-            update_path_bar(&subtitle, &workspace);
-            scroll_tab_into_view(&tab_scroll, &tab_list, new_index);
-            SessionStore::persist(&workspace.borrow());
+            present_tab_ui(
+                &doc, &vim_pill,
+                &workspace, &tab_list, &stack, &tab_inner,
+                &tab_scroll, &recently_closed, &canvases, &subtitle,
+                apply_accent.clone(),
+            );
         });
 
         dialog.show();

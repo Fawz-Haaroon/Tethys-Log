@@ -36,8 +36,9 @@ pub fn tab_title_btn(shell: &Box) -> Option<gtk::Button> {
 
 /// Writes the active tab's canonical note path into `label`.
 ///
-/// Format when the note has a custom title:   "My Title  —  ~/.local/share/tethys-log/notes/<id>.tlog"
-/// Format for default/untitled notes:         "~/.local/share/tethys-log/notes/<id>.tlog"
+/// Format for a note opened from outside ~/Tethys-Log/:  "alya.tlog  —  ~/Desktop/alya.tlog"
+/// Format when the note has a custom title:              "My Title  —  ~/.local/share/tethys-log/notes/<id>.tlog"
+/// Format for default/untitled notes:                     "~/.local/share/tethys-log/notes/<id>.tlog"
 ///
 /// Why not show the title alone: the path bar doubles as a location indicator
 /// for power users who manage notes on the filesystem directly.  Hiding the
@@ -58,7 +59,13 @@ pub fn update_path_bar(label: &Label, workspace: &Rc<RefCell<WorkspaceDocument>>
                 || title.starts_with("Untitled")
                 || title.starts_with("New Note");
 
-            if is_default {
+            if let Some(source) = t.source_path() {
+                // Opened from outside ~/Tethys-Log/ -- show exactly where the
+                // file lives, same as the managed cases below. This is also
+                // what the "click to open in file manager" handler parses.
+                let full_path = source.to_string_lossy().replacen(&home, "~", 1);
+                format!("{title}  —  {full_path}")
+            } else if is_default {
                 // Fallback: show the UUID-based path for unnamed notes
                 let full_path = note_path(t.note_identifier());
                 full_path.to_string_lossy().replacen(&home, "~", 1)
