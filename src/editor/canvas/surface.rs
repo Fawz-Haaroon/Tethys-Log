@@ -97,7 +97,12 @@ impl EditorCanvas {
         deserialise_into_buffer(raw_content, &buffer, &view, &image_dir);
         buffer.end_irreversible_action();
 
-        wire_autosave(&buffer, note.note_identifier().to_string(), note.title().to_string());
+        wire_autosave(
+            &buffer,
+            note.note_identifier().to_string(),
+            note.title().to_string(),
+            note.source_path().map(|p| p.to_path_buf()),
+        );
         wire_image_drop(&view, note.note_identifier().to_string());
         wire_clipboard_image_paste(&view, note.note_identifier().to_string());
         wire_url_paste(&view);
