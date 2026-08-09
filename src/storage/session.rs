@@ -1,9 +1,9 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    document::workspace::WorkspaceDocument,
+    document::{tab::TabSpec, workspace::WorkspaceDocument},
     storage::paths::session_path,
 };
 
@@ -19,6 +19,11 @@ struct TabEntry {
     title: String,
     #[serde(default)]
     accent: Option<String>,
+    // Present for tabs opened from outside ~/Tethys-Log/ (CLI, file
+    // manager, or the Open dialog on a native .tlog file). `#[serde(default)]`
+    // so session.json files written before this field existed still load.
+    #[serde(default)]
+    source_path: Option<PathBuf>,
 }
 
 pub struct SessionStore;
@@ -34,10 +39,10 @@ impl SessionStore {
         match saved {
             Some(s) if !s.tabs.is_empty() => {
                 for entry in s.tabs {
-                    workspace.open_tab_with_accent(
-                        entry.note_identifier,
-                        entry.title,
-                        entry.accent,
+                    workspace.open_tab(
+                        TabSpec::new(entry.note_identifier, entry.title)
+                            .with_accent(entry.accent)
+                            .with_source_path(entry.source_path),
                     );
                 }
                 workspace.set_active_tab_index(s.active_index);
@@ -60,6 +65,7 @@ impl SessionStore {
                     note_identifier: t.note_identifier().to_string(),
                     title: t.title().to_string(),
                     accent: t.accent.clone(),
+                    source_path: t.source_path().map(|p| p.to_path_buf()),
                 })
                 .collect(),
             active_index: workspace.active_tab_index(),
