@@ -31,6 +31,7 @@ pub fn close_tab(
         ws.open_tabs().get(index).map(|t| ClosedTab {
             note_identifier: t.note_identifier().to_string(),
             title: t.title().to_string(),
+            source_path: t.source_path().map(|p| p.to_path_buf()),
         })
     };
     if let Some(entry) = closed_entry {
