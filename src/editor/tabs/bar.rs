@@ -4,17 +4,14 @@ use gtk::{prelude::*, Box, Button, Label, Orientation, ScrolledWindow, Stack};
 
 use crate::{
     document::workspace::WorkspaceDocument,
-    editor::{
-        canvas::EditorCanvas,
-        tabs::{
-            active::mark_active,
-            canvas_store::CanvasStore,
-            closed::ClosedTab,
-            controller::TabController,
-            scroll::scroll_arrow_btn,
-            widget::{build_tab, ApplyAccentFn, TAB_WIDTH},
-        },
-        workspace_view::apply_vim_mode_to_pill,
+    editor::tabs::{
+        active::mark_active,
+        canvas_store::CanvasStore,
+        closed::ClosedTab,
+        controller::TabController,
+        open::build_canvas,
+        scroll::scroll_arrow_btn,
+        widget::{build_tab, ApplyAccentFn, TAB_WIDTH},
     },
     storage::{notes::NoteStore, session::SessionStore},
 };
@@ -100,27 +97,17 @@ impl TabBar {
             })
         };
 
-        // build_canvas: constructs an EditorCanvas wired to the vim-pill.
-        // vim_pill is Rc so we clone the Rc cheaply on each call and downgrade inside.
-        let make_canvas = |note: &crate::document::note::NoteDocument| -> EditorCanvas {
-            let pill_weak = vim_pill.downgrade();
-            EditorCanvas::new(note, move |mode| {
-                if let Some(pill) = pill_weak.upgrade() {
-                    apply_vim_mode_to_pill(&pill, mode);
-                }
-            })
-        };
-
         for i in 0..tab_count {
-            let (id, title, accent) = {
+            let (id, title, accent, source_path) = {
                 let ws = workspace.borrow();
                 let t  = &ws.open_tabs()[i];
-                (t.note_identifier().to_string(), t.title().to_string(), t.accent.clone())
+                (t.note_identifier().to_string(), t.title().to_string(), t.accent.clone(),
+                 t.source_path().map(|p| p.to_path_buf()))
             };
 
-            let note   = NoteStore::load(&id, &title);
+            let note   = NoteStore::load(&id, &title, source_path.as_deref());
             NoteStore::persist(&note);
-            let canvas = make_canvas(&note);
+            let canvas = build_canvas(&note, &vim_pill);
 
             stack.add_named(canvas.widget(), Some(&id));
             canvases.borrow_mut().insert(canvas);

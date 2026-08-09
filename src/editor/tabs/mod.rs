@@ -7,6 +7,7 @@ pub mod context_menu;
 pub mod controller;
 pub mod drag;
 pub mod indicator;
+pub mod open;
 pub mod rename;
 pub mod scroll;
 pub mod widget;
