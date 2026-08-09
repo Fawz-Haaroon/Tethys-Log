@@ -36,6 +36,7 @@ BIN_DIR="$PREFIX/bin"
 SHARE_DIR="$PREFIX/share"
 ICON_DIR="$SHARE_DIR/icons/hicolor/scalable/apps"
 DESKTOP_DIR="$SHARE_DIR/applications"
+MIME_DIR="$SHARE_DIR/mime/packages"
 
 # ── uninstall path ────────────────────────────────────────────────────────────
 
@@ -44,8 +45,10 @@ if [[ $UNINSTALL -eq 1 ]]; then
     rm -f "$BIN_DIR/$APP_NAME"
     rm -f "$ICON_DIR/$APP_ID.svg"
     rm -f "$DESKTOP_DIR/$APP_ID.desktop"
+    rm -f "$MIME_DIR/$APP_ID.mime.xml"
     gtk-update-icon-cache "$SHARE_DIR/icons/hicolor" 2>/dev/null || true
     update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+    update-mime-database "$SHARE_DIR/mime" 2>/dev/null || true
     echo "Done."
     exit 0
 fi
@@ -75,7 +78,7 @@ fi
 
 # ── install ───────────────────────────────────────────────────────────────────
 
-mkdir -p "$BIN_DIR" "$ICON_DIR" "$DESKTOP_DIR"
+mkdir -p "$BIN_DIR" "$ICON_DIR" "$DESKTOP_DIR" "$MIME_DIR"
 
 echo "Installing binary  → $BIN_DIR/$APP_NAME"
 install -m 755 "$BINARY" "$BIN_DIR/$APP_NAME"
@@ -87,9 +90,13 @@ echo "Installing .desktop → $DESKTOP_DIR/$APP_ID.desktop"
 sed "s|@PREFIX@|$PREFIX|g" "assets/$APP_ID.desktop.in" \
     > "$DESKTOP_DIR/$APP_ID.desktop"
 
+echo "Installing MIME type → $MIME_DIR/$APP_ID.mime.xml"
+cp "assets/$APP_ID.mime.xml" "$MIME_DIR/$APP_ID.mime.xml"
+
 # refresh caches — failures are non-fatal (some minimal environments lack the tools)
 gtk-update-icon-cache "$SHARE_DIR/icons/hicolor" 2>/dev/null || true
 update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+update-mime-database "$SHARE_DIR/mime" 2>/dev/null || true
 
 echo ""
 echo "Tethys Log $VERSION installed to $PREFIX."

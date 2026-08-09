@@ -89,6 +89,7 @@ Normal to Insert
 | Ctrl+T           | New tab                 |
 | Ctrl+W           | Close tab               |
 | Ctrl+Shift+T     | Reopen last closed tab  |
+| Ctrl+O           | Open file                |
 | Ctrl+R           | Rename active tab       |
 | Ctrl+F           | Find in note            |
 | Ctrl+Tab         | Next tab                |
@@ -96,6 +97,40 @@ Normal to Insert
 | Ctrl+1 to 9      | Jump to tab by position |
 | Ctrl+= / -       | Zoom in / out           |
 | Ctrl+0           | Reset zoom              |
+
+## Opening files
+
+Besides Ctrl+O, Tethys Log opens files handed to it from outside the app:
+
+```
+tethys-log path/to/note.tlog
+```
+
+Double-clicking a `.tlog` file in your file manager, or "Open With → Tethys
+Log" on any text file, does the same thing — a `.desktop` entry and MIME
+type are registered by `install.sh` so the system recognizes `.tlog` files
+and offers Tethys Log for them. If the app is already running, the file
+opens as a new tab in the existing window instead of starting a second copy;
+a file that's already open is focused rather than opened twice.
+
+What happens depends on the file:
+
+- **`.tlog` files** open and save in place at the exact path you gave —
+  the same way a plain text editor treats a `.txt` file. A path that
+  doesn't exist yet works too: it starts as an empty tab and the file is
+  created on first save, the same way `nvim newfile.txt` does.
+- **Everything else** (`.md`, `.py`, source files, plain `.txt`, ...) is
+  imported: a managed copy is made in `~/Tethys-Log/imports/` and edited
+  from there, exactly like using the Open-file dialog today. The original
+  file is left untouched — attaching an image or video later writes this
+  app's own markers into the buffer, which isn't safe to do to a file
+  you expect to stay plain text.
+- **Folders** aren't opened — there's no per-folder workspace concept here,
+  everything lives under the single `~/Tethys-Log/` store described below.
+
+`.tlog` files are plain UTF-8 text (see below), so tools outside Tethys Log
+— `cat`, `less`, `git diff`, GitHub's file viewer — display them normally
+instead of reporting a binary file.
 
 ## Images and videos
 
@@ -121,3 +156,16 @@ Everything lives in `~/Tethys-Log/` — a plain folder in your home directory yo
 ```
 
 Uninstalling the app never touches this folder.
+
+### The `.tlog` format
+
+Notes are plain UTF-8 text files. Attached images, videos, and embeds are
+stored as inline markers — a filename bracketed by a pair of
+Unicode Private-Use-Area characters, e.g. `photo.png` between a pair of
+markers around it — rather than embedded binary data, so the note itself
+stays small and diffable regardless of what's attached to it. Notes written
+before this scheme was introduced used C0 control characters (NUL/SOH/STX)
+for the same purpose, which is what made those files look like binary data
+to `file`, `git diff`, and GitHub's viewer; Tethys Log still reads that
+older form, and rewrites it to the current one the first time the note is
+saved again.

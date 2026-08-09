@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Registers application/x-tethys-log with the desktop's shared-mime-info
+  database. Without this, `*.tlog` isn't a real MIME type anywhere on the
+  system: file managers can't tell what kind of file it is (so double-click
+  falls back to "unknown file" instead of launching Tethys Log, even though
+  com.tethyslog.app.desktop already declares it handles this type), and
+  generic viewers have nothing to go on but the raw bytes.
+
+  sub-class-of text/plain is deliberate, not decorative: a .tlog file is
+  plain UTF-8 text (see editor/canvas/codec.rs's sentinel migration) with a
+  few Private-Use-Area marker characters for embedded media, so the
+  fallback behaviour a plain-text association gives on a system that
+  hasn't got this package installed is the correct one, not just a
+  graceful degradation.
+
+  Installed by install.sh to $SHARE_DIR/mime/packages/, per the
+  shared-mime-info spec: https://specifications.freedesktop.org/shared-mime-info-spec/
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-tethys-log">
+    <comment>Tethys Log document</comment>
+    <sub-class-of type="text/plain"/>
+    <icon name="com.tethyslog.app"/>
+    <glob pattern="*.tlog"/>
+  </mime-type>
+</mime-info>
