@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Tethys Log — system-wide install / uninstall script.
+# Tethys Log — install / uninstall script.
 #
 # Usage:
-#   ./install.sh              — build release and install to /usr/local (needs sudo)
-#   ./install.sh --user       — build release and install to ~/.local  (no sudo)
-#   ./install.sh --uninstall [--user]  — remove all installed files
+#   ./install.sh                 — build release and install to ~/.local (no sudo, default)
+#   ./install.sh --user          — same as above, explicit
+#   sudo ./install.sh --system   — build release and install to /usr/local (needs sudo)
+#   ./install.sh --uninstall              — remove the ~/.local install
+#   sudo ./install.sh --system --uninstall — remove the /usr/local install
 #
 # Runtime dependencies that must be present before running:
 #   GTK 4, GStreamer good+bad plugins, gdk-pixbuf, yt-dlp (optional, for YouTube playback)
@@ -16,20 +18,43 @@ APP_NAME="tethys-log"
 VERSION="0.1.0"
 
 # ── argument parsing ──────────────────────────────────────────────────────────
+# User installs to ~/.local are the default and don't need sudo. --system opts
+# into a shared /usr/local install, which does need sudo.
 
-USER_INSTALL=0
+SYSTEM_INSTALL=0
 UNINSTALL=0
 for arg in "$@"; do
     case "$arg" in
-        --user)      USER_INSTALL=1 ;;
+        --user)      SYSTEM_INSTALL=0 ;;
+        --system)    SYSTEM_INSTALL=1 ;;
         --uninstall) UNINSTALL=1 ;;
+        *)
+            echo "Unknown option: $arg" >&2
+            echo "Usage: $0 [--user|--system] [--uninstall]" >&2
+            exit 1
+            ;;
     esac
 done
 
-if [[ $USER_INSTALL -eq 1 ]]; then
-    PREFIX="$HOME/.local"
-else
+if [[ $SYSTEM_INSTALL -eq 1 ]]; then
     PREFIX="/usr/local"
+else
+    PREFIX="$HOME/.local"
+fi
+
+# A plain (non---system) run should never be sudo'd: it silently builds and
+# installs as root, which then can't find your user's rustup toolchain and
+# fails with a confusing "no default toolchain configured" error that has
+# nothing to do with Tethys itself.
+if [[ $EUID -eq 0 && $SYSTEM_INSTALL -eq 0 ]]; then
+    echo "Error: user installation should not be run with sudo." >&2
+    echo "" >&2
+    echo "Use:" >&2
+    echo "  ./install.sh" >&2
+    echo "" >&2
+    echo "For a system-wide installation instead:" >&2
+    echo "  sudo ./install.sh --system" >&2
+    exit 1
 fi
 
 BIN_DIR="$PREFIX/bin"
@@ -101,3 +126,14 @@ update-mime-database "$SHARE_DIR/mime" 2>/dev/null || true
 echo ""
 echo "Tethys Log $VERSION installed to $PREFIX."
 echo "Launch: tethys-log   or search 'Tethys Log' in your app grid."
+
+# Warn (don't auto-edit shell rc files — that's surprising and easy to get wrong)
+# if the install dir isn't already on PATH.
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+    echo ""
+    echo "Note: $BIN_DIR is not currently in your PATH, so 'tethys-log' won't"
+    echo "run directly from a new shell yet. Add it by putting this line in"
+    echo "your shell config (~/.bashrc, ~/.zshrc, etc.) and restarting your shell:"
+    echo ""
+    echo "  export PATH=\"$BIN_DIR:\$PATH\""
+fi
