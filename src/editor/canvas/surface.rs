@@ -90,6 +90,15 @@ impl EditorCanvas {
 
         let image_dir = image_dir_for_note(note.note_identifier());
 
+        // Text highlight — right-click colour swatch popover. Wired before
+        // the deserialise below (rather than after, where the equivalent
+        // call used to sit) because it's what registers the hl-fg-*/hl-bg-*
+        // TextTags. deserialise_into_buffer restores saved highlights by
+        // looking those tags up by name; registering them any later means
+        // the lookup fails and every saved highlight silently vanishes on
+        // load, which is the bug this ordering fixes.
+        wire_text_highlight(&view);
+
         // Wrap the initial deserialise in an irreversible action so restoring
         // saved content does not pollute the undo stack.  The user must not be
         // able to Ctrl+Z/u back to an empty buffer on a freshly opened note.
@@ -97,6 +106,11 @@ impl EditorCanvas {
         deserialise_into_buffer(raw_content, &buffer, &view, &image_dir);
         buffer.end_irreversible_action();
 
+        // wire_autosave is connected only after the buffer is fully loaded --
+        // both the `changed` signal from deserialise's own inserts and the
+        // `apply-tag` signal from restoring highlights above would otherwise
+        // schedule a pointless save of the note onto itself the moment it's
+        // opened.
         wire_autosave(
             &buffer,
             note.note_identifier().to_string(),
@@ -109,9 +123,6 @@ impl EditorCanvas {
 
         // Syntax highlighting — debounced 400 ms
         wire_syntax_highlighting(&view);
-
-        // Text highlight — right-click colour swatch popover
-        wire_text_highlight(&view);
 
         // search bar — created BEFORE wire_vim so we can pass search callbacks
         let search = Rc::new(SearchBar::new(buffer.clone()));
