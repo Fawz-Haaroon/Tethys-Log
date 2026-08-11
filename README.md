@@ -14,31 +14,44 @@ A simple text editor built with GTK4 and Rust, with support for viewing images a
 
 ## Install
 
-### Via Cargo
+### From source (recommended)
 
 Install the runtime libraries listed below first, then:
+
+```sh
+git clone https://github.com/Fawz-Haaroon/Tethys-Log
+cd Tethys-Log
+./install.sh
+```
+
+This builds the release binary and installs it for your user under `~/.local`
+(binary, icon, `.desktop` entry, and `.tlog` MIME association) — no `sudo`
+needed. If `~/.local/bin` isn't already on your `PATH`, the script tells you
+what line to add and where.
+
+For a system-wide install instead (all users, needs root):
+
+```sh
+sudo ./install.sh --system
+```
+
+To uninstall:
+
+```sh
+./install.sh --uninstall              # remove the user install
+sudo ./install.sh --system --uninstall  # remove the system-wide install
+```
+
+### Via Cargo
 
 ```sh
 cargo install tethys-log
 ```
 
-### From source
-
-```sh
-git clone https://github.com/Fawz-Haaroon/Tethys-Log
-cd Tethys-Log
-cargo build --release
-
-# System-wide install
-sudo ./install.sh
-
-# User install (no sudo)
-./install.sh --user
-
-# Uninstall
-sudo ./install.sh --uninstall
-./install.sh --uninstall --user
-```
+This installs just the `tethys-log` binary via Cargo's usual install location
+(typically `~/.cargo/bin`). It does **not** register the `.desktop` entry,
+icon, or `.tlog` MIME association — for those, use `./install.sh` from source
+instead.
 
 ## Runtime dependencies
 
