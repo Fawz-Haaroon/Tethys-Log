@@ -17,10 +17,9 @@
 // Vim integration: wire_vim passes search callbacks so / opens the bar and
 // n / N navigate matches without the bar needing to be visible.
 
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use gtk::{
-    glib,
     prelude::*,
     Box, FileChooserAction, FileChooserNative, FileFilter, Orientation,
     ResponseType, ScrolledWindow, TextBuffer, TextView, WrapMode,
@@ -35,10 +34,10 @@ use crate::{
             codec::{
                 deserialise_into_buffer, filename_from_path,
                 image_dir_for_note, insert_image_paintable_tagged,
-                insert_video_anchor,
+                insert_video_anchor, serialize_buffer,
             },
-            embed_undo::restore_orphaned_embeds,
             highlight::wire_text_highlight,
+            history::DocumentHistory,
             image_drop::wire_image_drop,
             syntax::wire_syntax_highlighting,
             url_paste::wire_url_paste,
@@ -64,7 +63,16 @@ impl EditorCanvas {
         on_mode_change: impl Fn(VimMode) + 'static,
     ) -> Self {
         let buffer = TextBuffer::new(None);
-        buffer.set_enable_undo(true);
+        // GTK's own undo is deliberately left off. It only round-trips raw
+        // codepoints -- verified directly against the API that a TextTag
+        // (highlight, img-path, video-path, embed-src, all of them) never
+        // survives a delete+undo, even though the character does. That's
+        // what used to leave an unreadable orphan character where a deleted
+        // image/video/embed had been. editor::canvas::history replaces
+        // buffer.undo()/redo() entirely with its own snapshot-based undo,
+        // which round-trips everything because it reuses the same
+        // deserialise_into_buffer that already loads a note correctly.
+        buffer.set_enable_undo(false);
 
         let view   = TextView::builder()
             .buffer(&buffer)
@@ -99,12 +107,18 @@ impl EditorCanvas {
         // load, which is the bug this ordering fixes.
         wire_text_highlight(&view);
 
-        // Wrap the initial deserialise in an irreversible action so restoring
-        // saved content does not pollute the undo stack.  The user must not be
-        // able to Ctrl+Z/u back to an empty buffer on a freshly opened note.
-        buffer.begin_irreversible_action();
         deserialise_into_buffer(raw_content, &buffer, &view, &image_dir);
-        buffer.end_irreversible_action();
+
+        // The note's undo history: seeded with whatever prior states were
+        // already saved in the .tlog (empty for a note with no undo history
+        // yet), plus the content the buffer was just loaded with as the
+        // starting baseline. Shared with VimState (u / Ctrl+r) and
+        // wire_autosave (which is what actually commits and persists new
+        // entries) below -- one instance for the life of this tab.
+        let document_history = Rc::new(RefCell::new(DocumentHistory::new(
+            serialize_buffer(&buffer),
+            note.history().to_vec(),
+        )));
 
         // wire_autosave is connected only after the buffer is fully loaded --
         // both the `changed` signal from deserialise's own inserts and the
@@ -116,6 +130,7 @@ impl EditorCanvas {
             note.note_identifier().to_string(),
             note.title().to_string(),
             note.source_path().map(|p| p.to_path_buf()),
+            document_history.clone(),
         );
         wire_image_drop(&view, note.note_identifier().to_string());
         wire_clipboard_image_paste(&view, note.note_identifier().to_string());
@@ -127,7 +142,7 @@ impl EditorCanvas {
         // search bar — created BEFORE wire_vim so we can pass search callbacks
         let search = Rc::new(SearchBar::new(buffer.clone()));
 
-        let vim_state = VimState::new(note.note_identifier());
+        let vim_state = VimState::new(note.note_identifier(), document_history);
         {
             let s1 = search.clone();
             let s2 = search.clone();
@@ -140,27 +155,6 @@ impl EditorCanvas {
                 move || { s2.go_next(); },
                 move || { s3.go_prev(); },
             );
-        }
-
-        // After every undo, restore embed widgets that GTK's undo engine reverted
-        // to bare U+FFFC code points without a live child anchor.
-        // The idle defers execution until after the RUN_LAST default handler has
-        // applied the text change, so the buffer is in its post-undo state.
-        {
-            let note_id   = note.note_identifier().to_string();
-            let view_weak = view.downgrade();
-            let buf_clone = buffer.clone();
-            buffer.connect_undo(move |_| {
-                let note_id   = note_id.clone();
-                let view_weak = view_weak.clone();
-                let buf       = buf_clone.clone();
-                glib::idle_add_local(move || {
-                    if let Some(view) = view_weak.upgrade() {
-                        restore_orphaned_embeds(&buf, &view, &note_id);
-                    }
-                    glib::ControlFlow::Break
-                });
-            });
         }
 
         let viewport = ScrolledWindow::builder()
