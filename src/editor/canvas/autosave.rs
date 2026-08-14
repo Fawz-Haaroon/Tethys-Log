@@ -6,7 +6,11 @@ use glib::{ControlFlow, timeout_add_local};
 use crate::{
     document::note::NoteDocument,
     document::node::NoteNode,
-    editor::canvas::{codec::serialize_buffer, highlight::is_highlight_tag},
+    editor::canvas::{
+        codec::serialize_buffer,
+        highlight::is_highlight_tag,
+        history::DocumentHistory,
+    },
     storage::notes::NoteStore,
 };
 
@@ -16,6 +20,16 @@ const AUTOSAVE_QUIET_MS: u64 = 700;
 /// (CLI, file manager, or the Open dialog on a native .tlog file) --
 /// carrying it through here is what makes autosave write back to that exact
 /// file instead of the managed notes/ directory. See NoteDocument::source_path.
+///
+/// `history` is the same DocumentHistory instance vim.rs's u/Ctrl+r and
+/// Insert mode's Ctrl+Z/Ctrl+Shift+Z call undo()/redo() on. This is where
+/// its bookkeeping actually reaches disk: at each settled point below, the
+/// buffer's current state is recorded as a possible undo step (a no-op if
+/// nothing changed since the last one -- see record_settled_state), and its
+/// persisted snapshot list is written into the .tlog alongside the current
+/// content. Skipping this and only writing `content` would mean every
+/// prior state disappears the moment the app closes, which defeats the
+/// entire point of DocumentHistory being disk-backed in the first place.
 ///
 /// Three TextBuffer signals mark a note dirty: `changed` (typing, deleting,
 /// pasting -- anything that touches the actual characters) and `apply-tag` /
@@ -31,6 +45,7 @@ pub fn wire_autosave(
     note_identifier: String,
     title:           String,
     source_path:     Option<PathBuf>,
+    history:         Rc<RefCell<DocumentHistory>>,
 ) {
     let generation = Rc::new(RefCell::new(0u64));
     let watched    = buffer.clone();
@@ -41,6 +56,7 @@ pub fn wire_autosave(
         let note_identifier = note_identifier.clone();
         let title           = title.clone();
         let source_path     = source_path.clone();
+        let history         = history.clone();
 
         Rc::new(move || {
             *generation.borrow_mut() += 1;
@@ -51,6 +67,7 @@ pub fn wire_autosave(
             let note_identifier = note_identifier.clone();
             let title           = title.clone();
             let source_path     = source_path.clone();
+            let history         = history.clone();
 
             timeout_add_local(std::time::Duration::from_millis(AUTOSAVE_QUIET_MS), move || {
                 if *generation.borrow() != pending {
@@ -63,11 +80,18 @@ pub fn wire_autosave(
                 // save/load round-trip.
                 let content = serialize_buffer(&watched);
 
+                // Record this settled state as a possible undo step BEFORE
+                // reading the snapshot list back out, so the entry that was
+                // just captured (if any) is included in what gets written.
+                history.borrow_mut().record_settled_state(content.clone());
+                let past_states = history.borrow().persisted_snapshots();
+
                 let mut draft = NoteDocument::new(note_identifier.clone(), title.clone());
                 if let Some(ref path) = source_path {
                     draft = draft.with_source_path(path.clone());
                 }
                 draft.replace_content(vec![NoteNode::Paragraph(content)]);
+                draft.set_history(past_states);
                 NoteStore::persist(&draft);
 
                 ControlFlow::Break
