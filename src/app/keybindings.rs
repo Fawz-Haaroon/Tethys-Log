@@ -15,6 +15,16 @@ pub fn attach(window: &impl IsA<gtk::Widget>, tabs: Rc<TabController>, zoom: Rc<
         let ctrl  = mods.contains(gdk::ModifierType::CONTROL_MASK);
         let shift = mods.contains(gdk::ModifierType::SHIFT_MASK);
 
+        // F2 for rename, no modifier -- the universal convention (Nautilus,
+        // Explorer, VS Code) rather than Ctrl+R, which every vim-style editor
+        // reserves for redo. This used to be Ctrl+R here, which shadowed
+        // vim's u/Ctrl+r before it ever reached the editor: this Capture-phase
+        // window controller runs first and stopped the event outright.
+        if key == gdk::Key::F2 {
+            tabs.rename_active();
+            return glib::Propagation::Stop;
+        }
+
         if !ctrl {
             return glib::Propagation::Proceed;
         }
@@ -44,10 +54,6 @@ pub fn attach(window: &impl IsA<gtk::Widget>, tabs: Rc<TabController>, zoom: Rc<
             }
             (false, gdk::Key::t) | (false, gdk::Key::T) => {
                 tabs.open_new();
-                glib::Propagation::Stop
-            }
-            (false, gdk::Key::r) | (false, gdk::Key::R) => {
-                tabs.rename_active();
                 glib::Propagation::Stop
             }
             (false, gdk::Key::f) | (false, gdk::Key::F) => {
