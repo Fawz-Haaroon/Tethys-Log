@@ -35,6 +35,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use gtk::{gdk, glib, prelude::*, TextView};
 
+use crate::editor::canvas::{codec::image_dir_for_note, history::{self, DocumentHistory}};
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum VimMode {
     Normal,
@@ -47,18 +49,22 @@ pub struct VimState {
     yank:            RefCell<Option<String>>,
     g_pending:       RefCell<bool>,
     visual_start:    RefCell<Option<i32>>, // buffer char-offset of visual anchor
-    // Stored so the embed undo pass can locate media files for this note.
+    // Stored so undo/redo can locate this note's image directory -- see
+    // editor::canvas::history, which needs it to reconstruct embedded
+    // media when loading a snapshot.
     pub note_identifier: String,
+    pub history:     Rc<RefCell<DocumentHistory>>,
 }
 
 impl VimState {
-    pub fn new(note_identifier: &str) -> Rc<Self> {
+    pub fn new(note_identifier: &str, history: Rc<RefCell<DocumentHistory>>) -> Rc<Self> {
         Rc::new(Self {
             mode:            RefCell::new(VimMode::Insert),
             yank:            RefCell::new(None),
             g_pending:       RefCell::new(false),
             visual_start:    RefCell::new(None),
             note_identifier: note_identifier.to_string(),
+            history,
         })
     }
 
@@ -94,7 +100,7 @@ pub fn wire_vim(
 
         match mode {
             VimMode::Insert => handle_insert(
-                &view_ref, &state_ref, key, ctrl, &on_mode_change,
+                &view_ref, &state_ref, key, ctrl, shift, &on_mode_change,
             ),
 
             VimMode::Normal => handle_normal(
@@ -119,9 +125,42 @@ fn handle_insert(
     state:          &Rc<VimState>,
     key:            gdk::Key,
     ctrl:           bool,
+    shift:          bool,
     on_mode_change: &Rc<dyn Fn(VimMode)>,
 ) -> glib::Propagation {
-    let _ = ctrl;
+    // Insert mode is the default, everyday typing mode, so the standard
+    // Ctrl+Z / Ctrl+Shift+Z (and the equally common Ctrl+Y) editor bindings
+    // live here rather than only under Normal mode's vim-style u / Ctrl+r.
+    // These used to just fall through to GTK's own default TextView
+    // keybinding, which worked only because buffer.set_enable_undo(true)
+    // was on -- now that undo is ours (see surface.rs for why), it has to
+    // be intercepted explicitly or Ctrl+Z would silently do nothing.
+    //
+    // Matching both `z`/`Z` (and `y`/`Y`) is not redundant: X11/GDK reports
+    // a held Shift by changing the keyval itself, not just the modifier --
+    // Shift+Z arrives as the distinct keyval Z, never as z with SHIFT_MASK
+    // set. Comparing only against the lowercase keyval is why Ctrl+Z (undo)
+    // worked and Ctrl+Shift+Z (redo) silently didn't. `shift` below is still
+    // the right way to tell undo from redo apart -- caps lock alone also
+    // produces the uppercase keyval but reports LOCK_MASK, not SHIFT_MASK,
+    // so it can't be mistaken for a redo request.
+    if ctrl && matches!(key, gdk::Key::z | gdk::Key::Z) {
+        let buffer    = view.buffer();
+        let image_dir = image_dir_for_note(&state.note_identifier);
+        if shift {
+            history::redo(&state.history, &buffer, view, &image_dir);
+        } else {
+            history::undo(&state.history, &buffer, view, &image_dir);
+        }
+        return glib::Propagation::Stop;
+    }
+    if ctrl && matches!(key, gdk::Key::y | gdk::Key::Y) {
+        let buffer    = view.buffer();
+        let image_dir = image_dir_for_note(&state.note_identifier);
+        history::redo(&state.history, &buffer, view, &image_dir);
+        return glib::Propagation::Stop;
+    }
+
     if key == gdk::Key::Escape {
         // step cursor back one char (vim convention on Esc)
         let buffer = view.buffer();
@@ -156,7 +195,8 @@ fn handle_normal(
     if ctrl {
         match key {
             gdk::Key::r | gdk::Key::R => {
-                if buffer.can_redo() { buffer.redo(); }
+                let image_dir = image_dir_for_note(&state.note_identifier);
+                history::redo(&state.history, &buffer, view, &image_dir);
                 return glib::Propagation::Stop;
             }
             _ => return glib::Propagation::Proceed,
@@ -269,10 +309,8 @@ fn handle_normal(
         (false, gdk::Key::y) => { yank_current_line(&buffer, state); }
         (false, gdk::Key::p) => { paste_after_line(&buffer, state); }
         (false, gdk::Key::u) => {
-            // Undo — embed widget restoration is handled by the buffer.connect_undo
-            // signal in surface.rs (idle-deferred so it runs after GTK's RUN_LAST
-            // default handler has actually applied the text change).
-            if buffer.can_undo() { buffer.undo(); }
+            let image_dir = image_dir_for_note(&state.note_identifier);
+            history::undo(&state.history, &buffer, view, &image_dir);
         }
 
         // All other keys in Normal mode are swallowed.
