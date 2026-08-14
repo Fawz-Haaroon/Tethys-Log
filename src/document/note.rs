@@ -13,11 +13,24 @@ pub struct NoteDocument {
     // saves directly to this path instead of the managed notes/ directory.
     // See storage::open for how notes end up with one of these.
     source_path: Option<PathBuf>,
+    // Prior states of this note's content, oldest first -- read from the
+    // .tlog's history section by NoteStore::load and written back by
+    // NoteStore::persist. Empty for a note with no undo history yet, or one
+    // saved before undo history existed. See codec::split_document_and_history
+    // / encode_document_with_history for the on-disk format, and
+    // editor::canvas::history for how entries are captured while editing.
+    history: Vec<String>,
 }
 
 impl NoteDocument {
     pub fn new(note_identifier: String, title: String) -> Self {
-        Self { note_identifier, title, content_nodes: Vec::new(), source_path: None }
+        Self {
+            note_identifier,
+            title,
+            content_nodes: Vec::new(),
+            source_path: None,
+            history: Vec::new(),
+        }
     }
 
     /// Marks this note as mirroring an external file at `path` -- saves go
@@ -47,5 +60,13 @@ impl NoteDocument {
 
     pub fn content_nodes(&self) -> &[NoteNode] {
         &self.content_nodes
+    }
+
+    pub fn set_history(&mut self, history: Vec<String>) {
+        self.history = history;
+    }
+
+    pub fn history(&self) -> &[String] {
+        &self.history
     }
 }
