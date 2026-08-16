@@ -173,7 +173,14 @@ const HISTORY_MARKER: char = '\u{E005}';
 /// panicked on -- the current document before the marker is always well
 /// formed on its own, so the worst a corrupt history section can do is lose
 /// some undo depth, never the note itself.
-fn split_document_and_history(raw: &str) -> (String, Vec<String>) {
+///
+/// pub(crate) rather than private: storage::open reads a native .tlog file
+/// directly (CLI argument, file-manager double-click, the in-app Open
+/// dialog) rather than through NoteStore::load, and needs the exact same
+/// split -- otherwise the history section reads back as literal document
+/// text, which is its own kind of corruption. One parser for the format,
+/// two legitimate callers.
+pub(crate) fn split_document_and_history(raw: &str) -> (String, Vec<String>) {
     let Some(marker_at) = raw.find(HISTORY_MARKER) else {
         return (raw.to_string(), Vec::new());
     };

@@ -38,6 +38,7 @@ use std::{
 use crate::{
     document::{id::new_note_id, node::NoteNode, note::NoteDocument},
     storage::import::{self, ImportError},
+    storage::notes::split_document_and_history,
 };
 
 #[derive(Debug)]
@@ -130,11 +131,20 @@ fn open_native_in_place(path: &Path) -> Result<NoteDocument, OpenError> {
         String::new()
     };
 
+    // A .tlog file may carry a trailing undo-history log after the current
+    // document (see storage::notes for the on-disk format) -- split it out
+    // here rather than handing the raw bytes straight to the buffer, or the
+    // history section renders as literal garbage text, and gets worse on
+    // every subsequent save as that garbage becomes "the document" and a
+    // fresh history section gets appended after it in turn.
+    let (current, history) = split_document_and_history(&raw);
+
     let title = file_name_or(path, "Untitled.tlog");
     let id    = identifier_for_native_path(path);
 
     let mut doc = NoteDocument::new(id, title).with_source_path(path.to_path_buf());
-    doc.replace_content(vec![NoteNode::Paragraph(raw)]);
+    doc.replace_content(vec![NoteNode::Paragraph(current)]);
+    doc.set_history(history);
     Ok(doc)
 }
 
