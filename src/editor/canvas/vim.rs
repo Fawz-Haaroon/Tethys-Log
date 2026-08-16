@@ -136,6 +136,11 @@ fn handle_insert(
     // was on -- now that undo is ours (see surface.rs for why), it has to
     // be intercepted explicitly or Ctrl+Z would silently do nothing.
     //
+    // Ctrl+R redo is included too, on top of Ctrl+Shift+Z/Ctrl+Y -- vim's
+    // own Ctrl+r convention only fires in Normal mode (below), which means
+    // pressing Escape first. Most people never leave Insert mode, so
+    // without this, Ctrl+R here just does nothing and looks broken.
+    //
     // Matching both `z`/`Z` (and `y`/`Y`) is not redundant: X11/GDK reports
     // a held Shift by changing the keyval itself, not just the modifier --
     // Shift+Z arrives as the distinct keyval Z, never as z with SHIFT_MASK
@@ -154,7 +159,7 @@ fn handle_insert(
         }
         return glib::Propagation::Stop;
     }
-    if ctrl && matches!(key, gdk::Key::y | gdk::Key::Y) {
+    if ctrl && (matches!(key, gdk::Key::y | gdk::Key::Y) || matches!(key, gdk::Key::r | gdk::Key::R)) {
         let buffer    = view.buffer();
         let image_dir = image_dir_for_note(&state.note_identifier);
         history::redo(&state.history, &buffer, view, &image_dir);
