@@ -27,7 +27,7 @@
 
 use std::{cell::RefCell, collections::VecDeque, path::Path, rc::Rc};
 
-use gtk::{TextBuffer, TextView};
+use gtk::{prelude::*, TextBuffer, TextView};
 
 use crate::editor::canvas::codec::deserialise_into_buffer;
 
@@ -114,12 +114,39 @@ impl DocumentHistory {
 
 pub fn undo(history: &Rc<RefCell<DocumentHistory>>, buffer: &TextBuffer, view: &TextView, image_dir: &Path) {
     if let Some(snapshot) = history.borrow_mut().step_back() {
-        deserialise_into_buffer(&snapshot, buffer, view, image_dir);
+        restore_snapshot(buffer, view, image_dir, &snapshot);
     }
 }
 
 pub fn redo(history: &Rc<RefCell<DocumentHistory>>, buffer: &TextBuffer, view: &TextView, image_dir: &Path) {
     if let Some(snapshot) = history.borrow_mut().step_forward() {
-        deserialise_into_buffer(&snapshot, buffer, view, image_dir);
+        restore_snapshot(buffer, view, image_dir, &snapshot);
     }
+}
+
+/// deserialise_into_buffer is the same function a fresh note load uses --
+/// it clears the buffer and rebuilds it by inserting through a local
+/// GtkTextIter, which never touches the buffer's own "insert" mark (the
+/// cursor). Verified directly: after the rebuild the cursor mark is wherever
+/// the initial set_text("") left it, offset 0, regardless of where the
+/// content came from. Left alone, every undo/redo would throw the cursor
+/// back to the top of the note -- correct behaviour for opening a note,
+/// wrong for stepping through its history one edit at a time.
+///
+/// So the offset is captured before the swap and restored after, clamped to
+/// the new (possibly shorter or longer) content. This isn't a precise
+/// "same logical position" mapping -- it can't be, without diffing the two
+/// snapshots -- but undo/redo steps are local edits in practice, and
+/// clamping the old raw offset lands within a few characters of where the
+/// edit actually happened in the overwhelming majority of cases. Good
+/// enough without needing to store a cursor position per history entry.
+fn restore_snapshot(buffer: &TextBuffer, view: &TextView, image_dir: &Path, snapshot: &str) {
+    let cursor_offset = buffer.cursor_position();
+
+    deserialise_into_buffer(snapshot, buffer, view, image_dir);
+
+    let clamped = cursor_offset.min(buffer.char_count());
+    let restored = buffer.iter_at_offset(clamped);
+    buffer.place_cursor(&restored);
+    view.scroll_mark_onscreen(&buffer.get_insert());
 }
