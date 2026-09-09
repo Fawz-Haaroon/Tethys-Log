@@ -5,6 +5,7 @@ A simple text editor built with GTK4 and Rust, with support for viewing images a
 ## Features
 
 - Multi-tab editing
+- Undo/redo that survives closing the app — steps back through a note's actual history, not just the current session
 - Vim motions (Normal, Insert, and Visual modes), with `/` search and `n`/`N` to cycle through matches
 - Inline images — attach via file picker, clipboard paste, or drag-and-drop, with a resizable grip on each
 - Inline video playback for local files, with YouTube support via yt-dlp and a resizable grip
@@ -14,44 +15,31 @@ A simple text editor built with GTK4 and Rust, with support for viewing images a
 
 ## Install
 
-### From source (recommended)
+### Via Cargo
 
 Install the runtime libraries listed below first, then:
-
-```sh
-git clone https://github.com/Fawz-Haaroon/Tethys-Log
-cd Tethys-Log
-./install.sh
-```
-
-This builds the release binary and installs it for your user under `~/.local`
-(binary, icon, `.desktop` entry, and `.tlog` MIME association) — no `sudo`
-needed. If `~/.local/bin` isn't already on your `PATH`, the script tells you
-what line to add and where.
-
-For a system-wide install instead (all users, needs root):
-
-```sh
-sudo ./install.sh --system
-```
-
-To uninstall:
-
-```sh
-./install.sh --uninstall              # remove the user install
-sudo ./install.sh --system --uninstall  # remove the system-wide install
-```
-
-### Via Cargo
 
 ```sh
 cargo install tethys-log
 ```
 
-This installs just the `tethys-log` binary via Cargo's usual install location
-(typically `~/.cargo/bin`). It does **not** register the `.desktop` entry,
-icon, or `.tlog` MIME association — for those, use `./install.sh` from source
-instead.
+### From source
+
+```sh
+git clone https://github.com/Fawz-Haaroon/Tethys-Log
+cd Tethys-Log
+cargo build --release
+
+# System-wide install
+sudo ./install.sh
+
+# User install (no sudo)
+./install.sh --user
+
+# Uninstall
+sudo ./install.sh --uninstall
+./install.sh --uninstall --user
+```
 
 ## Runtime dependencies
 
@@ -99,11 +87,13 @@ Normal to Insert
 
 | Keys             | Action                  |
 |------------------|-------------------------|
+| Ctrl+Z           | Undo                    |
+| Ctrl+Shift+Z / Ctrl+Y / Ctrl+R | Redo      |
 | Ctrl+T           | New tab                 |
 | Ctrl+W           | Close tab               |
 | Ctrl+Shift+T     | Reopen last closed tab  |
 | Ctrl+O           | Open file                |
-| Ctrl+R           | Rename active tab       |
+| F2               | Rename active tab       |
 | Ctrl+F           | Find in note            |
 | Ctrl+Tab         | Next tab                |
 | Ctrl+Shift+Tab   | Previous tab            |
@@ -182,3 +172,25 @@ for the same purpose, which is what made those files look like binary data
 to `file`, `git diff`, and GitHub's viewer; Tethys Log still reads that
 older form, and rewrites it to the current one the first time the note is
 saved again.
+
+### Undo history
+
+Ctrl+Z steps back through a note's actual edit history, not just what's
+changed since you opened the app — close a note and reopen it days later,
+and undo still goes back to where you were. Each prior version is stored in
+the same `.tlog` file as the note itself, right after the current text, so
+it's still one file per note either way; open one in a plain text editor
+and you'll see your content followed by what looks like a run of raw
+numbers and repeated text — that's the history log, and it's meant to be
+read by Tethys Log, not eyeballed. History is capped at the last 300 edits
+per note, oldest dropped first, so a note you keep for years doesn't grow
+forever.
+
+Redo (Ctrl+Shift+Z / Ctrl+Y / Ctrl+R, or Ctrl+r in vim Normal mode) only
+lasts for the current session, same as most editors — it's the one part of
+this that doesn't survive closing the app.
+
+An earlier version of Tethys Log relied on GTK's own built-in undo, which
+turned out to silently drop highlight colours and embedded images/videos on
+undo — the text came back, the formatting and media didn't. This is why
+undo was rebuilt from scratch instead of patched further.
