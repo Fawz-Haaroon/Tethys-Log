@@ -6,12 +6,14 @@ pub mod embed_widget;
 pub mod highlight;
 pub mod history;
 pub mod image_drop;
-pub mod image_insert;
 pub mod image_widget;
+pub mod media_frame;
 pub mod surface;
 pub mod syntax;
 pub mod url_paste;
+pub mod video_player;
 pub mod video_widget;
+pub mod viewer;
 pub mod vim;
 
 pub use surface::EditorCanvas;

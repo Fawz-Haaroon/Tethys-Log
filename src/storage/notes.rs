@@ -17,7 +17,7 @@ impl NoteStore {
     pub fn load(note_identifier: &str, title: &str, source_path: Option<&Path>) -> NoteDocument {
         let raw = match source_path {
             Some(p) => fs::read_to_string(p).unwrap_or_default(),
-            None    => fs::read_to_string(note_path(note_identifier)).unwrap_or_default(),
+            None => fs::read_to_string(note_path(note_identifier)).unwrap_or_default(),
         };
 
         // A note saved before undo history existed has no history section at
@@ -35,11 +35,11 @@ impl NoteStore {
     }
 
     pub fn persist(note: &NoteDocument) {
-        let content: String = note.content_nodes()
+        let content: String = note
+            .content_nodes()
             .iter()
             .filter_map(|n| match n {
                 NoteNode::Paragraph(p) => Some(p.as_str()),
-                NoteNode::Image(_)     => None,
             })
             .collect();
 
@@ -52,7 +52,7 @@ impl NoteStore {
             // file either: the note already has a real, user-chosen name
             // and location, so there's nothing for a mirror to add.
             Some(external_path) => Self::persist_external(external_path, &on_disk),
-            None                => Self::persist_managed(note, &on_disk),
+            None => Self::persist_managed(note, &on_disk),
         }
     }
 
@@ -100,7 +100,9 @@ impl NoteStore {
 
     fn title_path(title: &str) -> Option<std::path::PathBuf> {
         let slug = Self::slugify(title);
-        if slug.is_empty() { return None; }
+        if slug.is_empty() {
+            return None;
+        }
         // Don't create a shadow file for generic default names — only when the
         // user has given the note a real custom name.
         let lower = slug.as_str();
@@ -118,7 +120,13 @@ impl NoteStore {
     fn slugify(title: &str) -> String {
         title
             .chars()
-            .map(|c| if c.is_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+            .map(|c| {
+                if c.is_alphanumeric() {
+                    c.to_ascii_lowercase()
+                } else {
+                    '-'
+                }
+            })
             .collect::<String>()
             .split('-')
             .filter(|s| !s.is_empty())
@@ -136,14 +144,13 @@ impl NoteStore {
 /// is either the old complete file or the new complete file, never a
 /// half-written one.
 fn write_atomically(path: &Path, content: &str) -> io::Result<()> {
-    let file_name = path.file_name().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "path has no file name")
-    })?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no file name"))?;
     let tmp_path = path.with_file_name(format!("{}.tmp", file_name.to_string_lossy()));
     fs::write(&tmp_path, content)?;
     fs::rename(&tmp_path, path)
 }
-
 
 // ── Undo history framing ────────────────────────────────────────────────────
 //
@@ -190,11 +197,17 @@ pub(crate) fn split_document_and_history(raw: &str) -> (String, Vec<String>) {
     let mut history = Vec::new();
 
     while !rest.is_empty() {
-        let Some(newline_at) = rest.find('\n') else { break };
-        let Ok(len) = rest[..newline_at].parse::<usize>() else { break };
+        let Some(newline_at) = rest.find('\n') else {
+            break;
+        };
+        let Ok(len) = rest[..newline_at].parse::<usize>() else {
+            break;
+        };
 
         let body_start = newline_at + 1;
-        if rest.len() < body_start + len { break }
+        if rest.len() < body_start + len {
+            break;
+        }
 
         history.push(rest[body_start..body_start + len].to_string());
         rest = &rest[body_start + len..];
@@ -213,7 +226,8 @@ fn encode_document_with_history(current: &str, history: &[String]) -> String {
         return current.to_string();
     }
 
-    let mut out = String::with_capacity(current.len() + history.iter().map(String::len).sum::<usize>());
+    let mut out =
+        String::with_capacity(current.len() + history.iter().map(String::len).sum::<usize>());
     out.push_str(current);
     out.push(HISTORY_MARKER);
     for entry in history {
