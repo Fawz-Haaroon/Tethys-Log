@@ -31,36 +31,84 @@
 //   binary instead of text -- which is what a .tlog note built before this
 //   fix looks like to every tool except Tethys-Log itself.
 
-pub const EMBED_OPEN:        char = '\u{E001}';
+pub const EMBED_OPEN: char = '\u{E001}';
 pub const EMBED_OPEN_LEGACY: char = '\x01';
-pub const EMBED_TAG:         &str = "embed:";
+pub const EMBED_TAG: &str = "embed:";
 
 #[derive(Clone, Copy)]
 pub struct PlatformInfo {
-    pub name:   &'static str,
+    pub name: &'static str,
     pub accent: &'static str, // CSS hex colour for the card left-stripe
 }
 
 pub enum EmbedKind {
-    YouTube { embed_src: String, watch_url: String },
-    Generic { watch_url: String, platform: PlatformInfo },
+    YouTube {
+        embed_src: String,
+        watch_url: String,
+    },
+    Generic {
+        watch_url: String,
+        platform: PlatformInfo,
+    },
 }
 
 // ── Platform constants ────────────────────────────────────────────────────────
-pub const YOUTUBE:    PlatformInfo = PlatformInfo { name: "YouTube",      accent: "#c8312a" };
-pub const INSTAGRAM:  PlatformInfo = PlatformInfo { name: "Instagram",    accent: "#c13584" };
-pub const TIKTOK:     PlatformInfo = PlatformInfo { name: "TikTok",       accent: "#69c9d0" };
-pub const VIMEO:      PlatformInfo = PlatformInfo { name: "Vimeo",        accent: "#1ab7ea" };
-pub const TWITTER:    PlatformInfo = PlatformInfo { name: "Twitter / X",  accent: "#1da1f2" };
-pub const PINTEREST:  PlatformInfo = PlatformInfo { name: "Pinterest",    accent: "#e60023" };
-pub const RUMBLE:     PlatformInfo = PlatformInfo { name: "Rumble",       accent: "#85c742" };
-pub const DAILYMOTION:PlatformInfo = PlatformInfo { name: "Dailymotion",  accent: "#0066dc" };
-pub const TWITCH:     PlatformInfo = PlatformInfo { name: "Twitch",       accent: "#9146ff" };
-pub const REDDIT:     PlatformInfo = PlatformInfo { name: "Reddit",       accent: "#ff4500" };
-pub const BILIBILI:   PlatformInfo = PlatformInfo { name: "Bilibili",     accent: "#fb7299" };
-pub const NICONICO:   PlatformInfo = PlatformInfo { name: "Niconico",     accent: "#252525" };
-pub const SOUNDCLOUD: PlatformInfo = PlatformInfo { name: "SoundCloud",   accent: "#ff5500" };
-pub const GENERIC:    PlatformInfo = PlatformInfo { name: "Video",        accent: "#5a7a9a" };
+pub const YOUTUBE: PlatformInfo = PlatformInfo {
+    name: "YouTube",
+    accent: "#c8312a",
+};
+pub const INSTAGRAM: PlatformInfo = PlatformInfo {
+    name: "Instagram",
+    accent: "#c13584",
+};
+pub const TIKTOK: PlatformInfo = PlatformInfo {
+    name: "TikTok",
+    accent: "#69c9d0",
+};
+pub const VIMEO: PlatformInfo = PlatformInfo {
+    name: "Vimeo",
+    accent: "#1ab7ea",
+};
+pub const TWITTER: PlatformInfo = PlatformInfo {
+    name: "Twitter / X",
+    accent: "#1da1f2",
+};
+pub const PINTEREST: PlatformInfo = PlatformInfo {
+    name: "Pinterest",
+    accent: "#e60023",
+};
+pub const RUMBLE: PlatformInfo = PlatformInfo {
+    name: "Rumble",
+    accent: "#85c742",
+};
+pub const DAILYMOTION: PlatformInfo = PlatformInfo {
+    name: "Dailymotion",
+    accent: "#0066dc",
+};
+pub const TWITCH: PlatformInfo = PlatformInfo {
+    name: "Twitch",
+    accent: "#9146ff",
+};
+pub const REDDIT: PlatformInfo = PlatformInfo {
+    name: "Reddit",
+    accent: "#ff4500",
+};
+pub const BILIBILI: PlatformInfo = PlatformInfo {
+    name: "Bilibili",
+    accent: "#fb7299",
+};
+pub const NICONICO: PlatformInfo = PlatformInfo {
+    name: "Niconico",
+    accent: "#252525",
+};
+pub const SOUNDCLOUD: PlatformInfo = PlatformInfo {
+    name: "SoundCloud",
+    accent: "#ff5500",
+};
+pub const GENERIC: PlatformInfo = PlatformInfo {
+    name: "Video",
+    accent: "#5a7a9a",
+};
 
 // ── Main classification entry point ───────────────────────────────────────────
 pub fn classify_url(raw: &str) -> Option<EmbedKind> {
@@ -227,26 +275,39 @@ fn classify_bare_url(url: &str) -> Option<EmbedKind> {
 }
 
 fn generic(url: &str, platform: PlatformInfo) -> EmbedKind {
-    EmbedKind::Generic { watch_url: url.to_string(), platform }
+    EmbedKind::Generic {
+        watch_url: url.to_string(),
+        platform,
+    }
 }
 
 // ── Domain whitelist for unknown iframes ─────────────────────────────────────
 fn is_known_video_host(url: &str) -> bool {
     const HOSTS: &[&str] = &[
-        "youtube.com", "youtu.be",
+        "youtube.com",
+        "youtu.be",
         "instagram.com",
         "tiktok.com",
         "vimeo.com",
-        "twitter.com", "x.com",
-        "pinterest.com", "pin.it", "assets.pinterest.com",
+        "twitter.com",
+        "x.com",
+        "pinterest.com",
+        "pin.it",
+        "assets.pinterest.com",
         "rumble.com",
-        "dailymotion.com", "dai.ly",
-        "twitch.tv", "clips.twitch.tv",
-        "reddit.com", "v.redd.it",
-        "bilibili.com", "b23.tv",
-        "nicovideo.jp", "nico.ms",
+        "dailymotion.com",
+        "dai.ly",
+        "twitch.tv",
+        "clips.twitch.tv",
+        "reddit.com",
+        "v.redd.it",
+        "bilibili.com",
+        "b23.tv",
+        "nicovideo.jp",
+        "nico.ms",
         "soundcloud.com",
-        "streamable.com", "streamff.com",
+        "streamable.com",
+        "streamff.com",
         "gfycat.com",
     ];
     HOSTS.iter().any(|h| url.contains(h))
@@ -254,20 +315,35 @@ fn is_known_video_host(url: &str) -> bool {
 
 // ── Derive platform branding from URL ────────────────────────────────────────
 pub fn platform_for_url(url: &str) -> PlatformInfo {
-    if url.contains("youtube.com") || url.contains("youtu.be") { YOUTUBE }
-    else if url.contains("instagram.com")                       { INSTAGRAM }
-    else if url.contains("tiktok.com")                         { TIKTOK }
-    else if url.contains("vimeo.com")                          { VIMEO }
-    else if url.contains("twitter.com") || url.contains("x.com") { TWITTER }
-    else if url.contains("pinterest.com") || url.contains("pin.it") { PINTEREST }
-    else if url.contains("rumble.com")                         { RUMBLE }
-    else if url.contains("dailymotion.com") || url.contains("dai.ly") { DAILYMOTION }
-    else if url.contains("twitch.tv")                          { TWITCH }
-    else if url.contains("reddit.com") || url.contains("v.redd.it") { REDDIT }
-    else if url.contains("bilibili.com") || url.contains("b23.tv") { BILIBILI }
-    else if url.contains("nicovideo.jp") || url.contains("nico.ms") { NICONICO }
-    else if url.contains("soundcloud.com")                     { SOUNDCLOUD }
-    else                                                       { GENERIC }
+    if url.contains("youtube.com") || url.contains("youtu.be") {
+        YOUTUBE
+    } else if url.contains("instagram.com") {
+        INSTAGRAM
+    } else if url.contains("tiktok.com") {
+        TIKTOK
+    } else if url.contains("vimeo.com") {
+        VIMEO
+    } else if url.contains("twitter.com") || url.contains("x.com") {
+        TWITTER
+    } else if url.contains("pinterest.com") || url.contains("pin.it") {
+        PINTEREST
+    } else if url.contains("rumble.com") {
+        RUMBLE
+    } else if url.contains("dailymotion.com") || url.contains("dai.ly") {
+        DAILYMOTION
+    } else if url.contains("twitch.tv") {
+        TWITCH
+    } else if url.contains("reddit.com") || url.contains("v.redd.it") {
+        REDDIT
+    } else if url.contains("bilibili.com") || url.contains("b23.tv") {
+        BILIBILI
+    } else if url.contains("nicovideo.jp") || url.contains("nico.ms") {
+        NICONICO
+    } else if url.contains("soundcloud.com") {
+        SOUNDCLOUD
+    } else {
+        GENERIC
+    }
 }
 
 // ── Disk codec helpers ────────────────────────────────────────────────────────
@@ -278,10 +354,6 @@ pub fn watch_url_from_embed_src(embed_src: &str) -> String {
         return youtube_watch_url(id);
     }
     embed_src.to_string()
-}
-
-pub fn embed_marker(watch_url: &str) -> String {
-    format!("{}{}{}{}", EMBED_OPEN, EMBED_TAG, watch_url, EMBED_OPEN)
 }
 
 pub fn parse_embed_tag(tag_content: &str) -> Option<&str> {
@@ -314,27 +386,42 @@ fn extract_attr<'a>(html: &'a str, attr: &str) -> Option<&'a str> {
 
 fn query_param<'a>(url: &'a str, key: &str) -> Option<&'a str> {
     let search = format!("{}=", key);
-    url.split('?').nth(1)?
+    url.split('?')
+        .nth(1)?
         .split('&')
         .find(|p| p.starts_with(search.as_str()))
-        .map(|p| p[key.len() + 1..].split('&').next().unwrap_or(&p[key.len() + 1..]))
+        .map(|p| {
+            p[key.len() + 1..]
+                .split('&')
+                .next()
+                .unwrap_or(&p[key.len() + 1..])
+        })
 }
 
 fn strip_query(url: &str) -> &str {
-    url.split('?').next().unwrap_or(url).split('#').next().unwrap_or(url)
+    url.split('?')
+        .next()
+        .unwrap_or(url)
+        .split('#')
+        .next()
+        .unwrap_or(url)
 }
 
 // ── YouTube helpers ───────────────────────────────────────────────────────────
 fn youtube_watch_id(url: &str) -> Option<&str> {
-    if !url.contains("youtube.com/watch") { return None; }
-    url.split('?').nth(1)?
+    if !url.contains("youtube.com/watch") {
+        return None;
+    }
+    url.split('?')
+        .nth(1)?
         .split('&')
         .find(|p| p.starts_with("v="))
         .map(|p| &p[2..])
 }
 
 fn youtu_be_id(url: &str) -> Option<&str> {
-    let path = url.strip_prefix("https://youtu.be/")
+    let path = url
+        .strip_prefix("https://youtu.be/")
         .or_else(|| url.strip_prefix("http://youtu.be/"))?;
     Some(path.split('?').next().unwrap_or(path))
 }
