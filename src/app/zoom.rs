@@ -1,20 +1,20 @@
 #[allow(unused_imports)]
-use gtk::{CssProvider, gdk, prelude::*};
+use gtk::{gdk, prelude::*, CssProvider};
 
 const FONT_DEFAULT_PT: f32 = 10.3;
-const FONT_MAX_PT:     f32 = 28.0;
-const FONT_MIN_PT:     f32 = 6.0;
-const FONT_STEP_PT:    f32 = 0.5;
+const FONT_MAX_PT: f32 = 28.0;
+const FONT_MIN_PT: f32 = 6.0;
+const FONT_STEP_PT: f32 = 0.5;
 
 pub struct ZoomState {
-    size:     std::cell::Cell<f32>,
+    size: std::cell::Cell<f32>,
     provider: CssProvider,
 }
 
 impl ZoomState {
     pub fn init() -> Self {
         let provider = CssProvider::new();
-        let size     = std::cell::Cell::new(FONT_DEFAULT_PT);
+        let size = std::cell::Cell::new(FONT_DEFAULT_PT);
         push_zoom_css(&provider, FONT_DEFAULT_PT);
         gtk::style_context_add_provider_for_display(
             &gdk::Display::default().unwrap(),
@@ -43,9 +43,7 @@ impl ZoomState {
 }
 
 fn push_zoom_css(provider: &CssProvider, size: f32) {
-    provider.load_from_data(&format!(
-        "textview, text {{ font-size: {size:.1}pt; }}"
-    ));
+    provider.load_from_data(&format!("textview, text {{ font-size: {size:.1}pt; }}"));
 }
 
 pub fn load_base_theme() {
@@ -55,7 +53,10 @@ pub fn load_base_theme() {
     load_sheet(crate::editor::theme::ATTACH);
     load_sheet(crate::editor::canvas::embed_widget::EMBED_CSS);
     load_sheet(crate::editor::canvas::video_widget::VIDEO_CSS);
+    load_sheet(crate::editor::canvas::video_player::VIDEO_PLAYER_CSS);
     load_sheet(crate::editor::canvas::image_widget::IMAGE_CSS);
+    load_sheet(crate::editor::canvas::media_frame::MEDIA_FRAME_CSS);
+    load_sheet(crate::editor::canvas::viewer::VIEWER_CSS);
     load_sheet(crate::editor::canvas::highlight::HIGHLIGHT_CSS);
 }
 
