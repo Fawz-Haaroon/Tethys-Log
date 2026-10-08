@@ -27,18 +27,25 @@ use crate::editor::canvas::{
 // HL_OPEN / HL_CLOSE (defined in highlight.rs, next to the palette they
 // serialise) use the same E0xx range for the same reason and slot into the
 // marker search below alongside img/embed/video.
-const VIDEO_OPEN:        char = '\u{E002}';
-const VIDEO_OPEN_LEGACY: char = '\x02';
-const VIDEO_TAG:         &str = "video:";
+const VIDEO_OPEN: char = '\u{E002}';
 
-const IMG_OPEN:        char = '\u{E000}';
+// Separates a filename from an optional trailing "WxH" inside an img/video
+// marker's payload, e.g. \u{E000}img:photo.png\u{E006}640x480\u{E000}. Not
+// E005 -- that one's already storage::notes::HISTORY_MARKER, and reusing
+// it here would make split_document_and_history find the first resized
+// image in a note and mistake everything after it for the undo log.
+const DIM_SEP: char = '\u{E006}';
+const VIDEO_OPEN_LEGACY: char = '\x02';
+const VIDEO_TAG: &str = "video:";
+
+const IMG_OPEN: char = '\u{E000}';
 const IMG_OPEN_LEGACY: char = '\x00';
-const IMG_TAG:         &str = "img:";
+const IMG_TAG: &str = "img:";
 
 pub fn serialize_buffer(buffer: &TextBuffer) -> String {
-    let mut out    = String::new();
-    let mut iter   = buffer.start_iter();
-    let end        = buffer.end_iter();
+    let mut out = String::new();
+    let mut iter = buffer.start_iter();
+    let end = buffer.end_iter();
     // Highlight tag names currently "open" in the output -- i.e. the tags
     // that applied to the last character written. When the set of tags at
     // the current position differs from this, a run has ended and/or begun,
@@ -79,16 +86,19 @@ pub fn serialize_buffer(buffer: &TextBuffer) -> String {
                 out.push(IMG_OPEN);
                 out.push_str(IMG_TAG);
                 out.push_str(&p);
+                push_dims(&mut out, widget_size_at(&iter));
                 out.push(IMG_OPEN);
             } else if let Some(src) = embed_src {
                 out.push(EMBED_OPEN);
                 out.push_str(EMBED_TAG);
                 out.push_str(&src);
+                push_dims(&mut out, widget_size_at(&iter));
                 out.push(EMBED_OPEN);
             } else if let Some(p) = video_path {
                 out.push(VIDEO_OPEN);
                 out.push_str(VIDEO_TAG);
                 out.push_str(&p);
+                push_dims(&mut out, widget_size_at(&iter));
                 out.push(VIDEO_OPEN);
             }
             // orphaned FFFC — drop
@@ -108,7 +118,9 @@ pub fn serialize_buffer(buffer: &TextBuffer) -> String {
             out.push(ch);
         }
 
-        if !iter.forward_char() { break; }
+        if !iter.forward_char() {
+            break;
+        }
     }
 
     // The buffer ended mid-run (the last characters were highlighted) --
@@ -120,6 +132,83 @@ pub fn serialize_buffer(buffer: &TextBuffer) -> String {
     out
 }
 
+/// Reads the current size of whatever widget is anchored at `iter` --
+/// image and video widgets always carry an explicit size_request, set at
+/// construction and kept current by MediaFrame's drag-resize, so this is
+/// the one true source for "what size did the user leave this at", read
+/// fresh at save time rather than tracked in a second place that could
+/// drift from what's actually on screen.
+/// Reads the current size of whatever widget is anchored at `iter`. Image
+/// and video widgets are themselves the resizable frame, so their own
+/// size_request is the answer directly. An embed card is not -- its outer
+/// box (header, play button, accent stripe) is a fixed-width panel, not
+/// what the user resized -- so this also checks one level down for a
+/// nested frame (the same "media-frame" CSS class media_frame.rs applies)
+/// and reads that instead when the anchored widget itself isn't one.
+/// Either way this is read fresh at save time rather than tracked in a
+/// second place that could drift from what's actually on screen.
+fn widget_size_at(iter: &gtk::TextIter) -> Option<(i32, i32)> {
+    let anchor = iter.child_anchor()?;
+    let widget = anchor.widgets().into_iter().next()?;
+    let sized = if widget.has_css_class("media-frame") {
+        widget
+    } else {
+        find_media_frame(&widget)?
+    };
+    let (w, h) = (sized.width_request(), sized.height_request());
+    if w > 0 && h > 0 {
+        Some((w, h))
+    } else {
+        None
+    }
+}
+
+/// Depth-first search for a descendant carrying the "media-frame" CSS
+/// class -- used to find an embed card's inline player once it's playing;
+/// returns None for a card that's still showing its unplayed preview,
+/// which correctly means "no explicit size yet, use the default."
+fn find_media_frame(widget: &gtk::Widget) -> Option<gtk::Widget> {
+    let mut child = widget.first_child();
+    while let Some(w) = child {
+        if w.has_css_class("media-frame") {
+            return Some(w);
+        }
+        if let Some(found) = find_media_frame(&w) {
+            return Some(found);
+        }
+        child = w.next_sibling();
+    }
+    None
+}
+
+fn push_dims(out: &mut String, size: Option<(i32, i32)>) {
+    if let Some((w, h)) = size {
+        out.push(DIM_SEP);
+        out.push_str(&w.to_string());
+        out.push('x');
+        out.push_str(&h.to_string());
+    }
+}
+
+/// Splits an img/video/embed marker's payload into the filename-or-url and
+/// an optional parsed size. Anything that doesn't parse cleanly -- a note
+/// saved before this field existed, or one that's been hand-edited into
+/// something odd -- degrades to `None` rather than failing the whole load;
+/// a missing size just means the widget falls back to its natural-size
+/// default, the same as it always has.
+fn split_payload_and_dims(content: &str) -> (&str, Option<(i32, i32)>) {
+    let Some((payload, dims)) = content.split_once(DIM_SEP) else {
+        return (content, None);
+    };
+    let Some((w, h)) = dims.split_once('x') else {
+        return (payload, None);
+    };
+    match (w.parse::<i32>(), h.parse::<i32>()) {
+        (Ok(w), Ok(h)) if w > 0 && h > 0 => (payload, Some((w, h))),
+        _ => (payload, None),
+    }
+}
+
 /// Finds the earlier of a sentinel's current and legacy form in `text`,
 /// returning its byte offset and which literal character was found there.
 /// The caller re-uses that exact character to find the matching close, so a
@@ -128,16 +217,16 @@ pub fn serialize_buffer(buffer: &TextBuffer) -> String {
 fn nearest_sentinel(text: &str, current: char, legacy: char) -> Option<(usize, char)> {
     match (text.find(current), text.find(legacy)) {
         (Some(a), Some(b)) => Some(if a <= b { (a, current) } else { (b, legacy) }),
-        (Some(a), None)    => Some((a, current)),
-        (None, Some(b))    => Some((b, legacy)),
-        (None, None)       => None,
+        (Some(a), None) => Some((a, current)),
+        (None, Some(b)) => Some((b, legacy)),
+        (None, None) => None,
     }
 }
 
 pub fn deserialise_into_buffer(
-    raw:       &str,
-    buffer:    &TextBuffer,
-    view:      &TextView,
+    raw: &str,
+    buffer: &TextBuffer,
+    view: &TextView,
     image_dir: &std::path::Path,
 ) {
     buffer.set_text("");
@@ -149,23 +238,25 @@ pub fn deserialise_into_buffer(
     let mut active_highlight: Vec<String> = Vec::new();
 
     while !rest.is_empty() {
-        let img_hit   = nearest_sentinel(rest, IMG_OPEN, IMG_OPEN_LEGACY);
+        let img_hit = nearest_sentinel(rest, IMG_OPEN, IMG_OPEN_LEGACY);
         let embed_hit = nearest_sentinel(rest, EMBED_OPEN, EMBED_OPEN_LEGACY);
         let video_hit = nearest_sentinel(rest, VIDEO_OPEN, VIDEO_OPEN_LEGACY);
-        let hl_open_hit  = rest.find(HL_OPEN).map(|p| (p, HL_OPEN));
+        let hl_open_hit = rest.find(HL_OPEN).map(|p| (p, HL_OPEN));
         let hl_close_hit = rest.find(HL_CLOSE).map(|p| (p, HL_CLOSE));
 
         let next: Option<(usize, char, u8)> = [
-            img_hit.map(|(p, c)|      (p, c, 0u8)),
-            embed_hit.map(|(p, c)|    (p, c, 1u8)),
-            video_hit.map(|(p, c)|    (p, c, 2u8)),
-            hl_open_hit.map(|(p, c)|  (p, c, 3u8)),
+            img_hit.map(|(p, c)| (p, c, 0u8)),
+            embed_hit.map(|(p, c)| (p, c, 1u8)),
+            video_hit.map(|(p, c)| (p, c, 2u8)),
+            hl_open_hit.map(|(p, c)| (p, c, 3u8)),
             hl_close_hit.map(|(p, c)| (p, c, 4u8)),
         ]
-        .into_iter().flatten().min_by_key(|(pos, _, _)| *pos);
+        .into_iter()
+        .flatten()
+        .min_by_key(|(pos, _, _)| *pos);
 
         let (marker_start, sentinel, kind) = match next {
-            None    => {
+            None => {
                 insert_text_with_highlight(buffer, &mut iter, rest, &active_highlight);
                 break;
             }
@@ -197,27 +288,32 @@ pub fn deserialise_into_buffer(
 
                 match kind {
                     0 => {
-                        if let Some(filename) = tag_content.strip_prefix(IMG_TAG) {
+                        if let Some(rest) = tag_content.strip_prefix(IMG_TAG) {
+                            let (filename, size) = split_payload_and_dims(rest);
                             let full_path = image_dir.join(filename);
-                            let _ = insert_image_paintable_tagged(buffer, view, &mut iter, &full_path, filename);
+                            let _ = insert_image_paintable_tagged(
+                                buffer, view, &mut iter, &full_path, filename, size,
+                            );
                         }
                     }
                     1 => {
-                        if let Some(src) = parse_embed_tag(tag_content) {
-                            insert_embed_anchor(buffer, view, &mut iter, src);
+                        if let Some(raw) = parse_embed_tag(tag_content) {
+                            let (src, size) = split_payload_and_dims(raw);
+                            insert_embed_anchor(buffer, view, &mut iter, src, size);
                         }
                     }
                     2 => {
-                        if let Some(filename) = tag_content.strip_prefix(VIDEO_TAG) {
+                        if let Some(rest) = tag_content.strip_prefix(VIDEO_TAG) {
+                            let (filename, size) = split_payload_and_dims(rest);
                             // derive the note id from the image_dir path (last component)
                             // then resolve the video path through the canonical helper
-                            let note_id = image_dir
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("");
+                            let note_id =
+                                image_dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
                             let video_dir = crate::storage::paths::videos_dir_for(note_id);
                             let full_path = video_dir.join(filename);
-                            insert_video_anchor(buffer, view, &mut iter, &full_path, filename);
+                            insert_video_anchor(
+                                buffer, view, &mut iter, &full_path, filename, size,
+                            );
                         }
                     }
                     _ => {
@@ -251,19 +347,23 @@ pub fn deserialise_into_buffer(
 /// not a reason to fail loading the note.
 fn insert_text_with_highlight(
     buffer: &TextBuffer,
-    iter:   &mut gtk::TextIter,
-    text:   &str,
+    iter: &mut gtk::TextIter,
+    text: &str,
     active_highlight: &[String],
 ) {
-    if text.is_empty() { return; }
+    if text.is_empty() {
+        return;
+    }
 
     let start_offset = iter.offset();
     buffer.insert(iter, text);
 
-    if active_highlight.is_empty() { return; }
+    if active_highlight.is_empty() {
+        return;
+    }
 
     let start = buffer.iter_at_offset(start_offset);
-    let end   = buffer.iter_at_offset(iter.offset());
+    let end = buffer.iter_at_offset(iter.offset());
     for name in active_highlight {
         if let Some(tag) = buffer.tag_table().lookup(name) {
             buffer.apply_tag(&tag, &start, &end);
@@ -272,10 +372,11 @@ fn insert_text_with_highlight(
 }
 
 pub fn insert_embed_anchor(
-    buffer:    &TextBuffer,
-    view:      &TextView,
-    iter:      &mut gtk::TextIter,
+    buffer: &TextBuffer,
+    view: &TextView,
+    iter: &mut gtk::TextIter,
     embed_src: &str,
+    initial_size: Option<(i32, i32)>,
 ) {
     // embed_src may be a YouTube /embed/ URL (stored from old notes) or a plain
     // watch/page URL (stored from new notes).  Derive the canonical watch URL.
@@ -284,7 +385,7 @@ pub fn insert_embed_anchor(
     let tag_name = format!("embed-src:{embed_src}");
     let tag = match buffer.tag_table().lookup(&tag_name) {
         Some(t) => t,
-        None    => buffer.create_tag(Some(&tag_name), &[]).unwrap(),
+        None => buffer.create_tag(Some(&tag_name), &[]).unwrap(),
     };
 
     if iter.offset() > 0 {
@@ -300,22 +401,23 @@ pub fn insert_embed_anchor(
 
     tag_fffc_at(buffer, &tag, before_offset, iter.offset());
 
-    let card = EmbedCard::new(&watch_url);
+    let card = EmbedCard::new(&watch_url, initial_size);
     view.add_child_at_anchor(card.widget(), &anchor);
     card.widget().show();
 }
 
 pub fn insert_image_paintable_tagged(
-    buffer:          &TextBuffer,
-    view:            &TextView,
-    iter:            &mut gtk::TextIter,
-    full_path:       &std::path::Path,
+    buffer: &TextBuffer,
+    view: &TextView,
+    iter: &mut gtk::TextIter,
+    full_path: &std::path::Path,
     tag_name_suffix: &str,
+    initial_size: Option<(i32, i32)>,
 ) -> Result<(), String> {
     let tag_name = format!("img-path:{tag_name_suffix}");
     let tag = match buffer.tag_table().lookup(&tag_name) {
         Some(t) => t,
-        None    => buffer.create_tag(Some(&tag_name), &[]).unwrap(),
+        None => buffer.create_tag(Some(&tag_name), &[]).unwrap(),
     };
 
     if iter.offset() > 0 {
@@ -331,7 +433,7 @@ pub fn insert_image_paintable_tagged(
 
     tag_fffc_at(buffer, &tag, before_offset, iter.offset());
 
-    let widget = ImageWidget::new(full_path);
+    let widget = ImageWidget::new(full_path, initial_size);
     view.add_child_at_anchor(widget.widget(), &anchor);
     widget.widget().show();
 
@@ -339,18 +441,19 @@ pub fn insert_image_paintable_tagged(
 }
 
 pub fn insert_video_anchor(
-    buffer:   &TextBuffer,
-    view:     &TextView,
-    iter:     &mut gtk::TextIter,
-    path:     &std::path::Path,
+    buffer: &TextBuffer,
+    view: &TextView,
+    iter: &mut gtk::TextIter,
+    path: &std::path::Path,
     filename: &str,
+    initial_size: Option<(i32, i32)>,
 ) {
     use crate::editor::canvas::video_widget::VideoWidget;
 
     let tag_name = format!("video-path:{filename}");
     let tag = match buffer.tag_table().lookup(&tag_name) {
         Some(t) => t,
-        None    => buffer.create_tag(Some(&tag_name), &[]).unwrap(),
+        None => buffer.create_tag(Some(&tag_name), &[]).unwrap(),
     };
 
     if iter.offset() > 0 {
@@ -366,14 +469,14 @@ pub fn insert_video_anchor(
 
     tag_fffc_at(buffer, &tag, before_offset, iter.offset());
 
-    let widget = VideoWidget::new(path);
+    let widget = VideoWidget::new(path, initial_size);
     view.add_child_at_anchor(widget.widget(), &anchor);
     widget.widget().show();
 }
 
 fn tag_fffc_at(buffer: &TextBuffer, tag: &gtk::TextTag, from_offset: i32, to_offset: i32) {
-    let mut it   = buffer.iter_at_offset(from_offset);
-    let     stop = buffer.iter_at_offset(to_offset);
+    let mut it = buffer.iter_at_offset(from_offset);
+    let stop = buffer.iter_at_offset(to_offset);
 
     while it != stop {
         if it.char() == '\u{FFFC}' {
@@ -382,12 +485,16 @@ fn tag_fffc_at(buffer: &TextBuffer, tag: &gtk::TextTag, from_offset: i32, to_off
             buffer.apply_tag(tag, &it, &tag_end);
             return;
         }
-        if !it.forward_char() { break; }
+        if !it.forward_char() {
+            break;
+        }
     }
 }
 
 pub fn filename_from_path(path: &std::path::Path) -> Option<String> {
-    path.file_name().and_then(|n| n.to_str()).map(|s| s.to_string())
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_string())
 }
 
 pub fn image_dir_for_note(note_identifier: &str) -> PathBuf {
