@@ -20,10 +20,10 @@ pub fn wire_clipboard_image_paste(view: &TextView, note_identifier: String) {
 
         let display = match gdk::Display::default() {
             Some(d) => d,
-            None    => return glib::Propagation::Proceed,
+            None => return glib::Propagation::Proceed,
         };
         let clipboard = display.clipboard();
-        let formats   = clipboard.formats();
+        let formats = clipboard.formats();
 
         let has_image = formats.contains_type(gdk::Texture::static_type())
             || formats.mime_types().iter().any(|m| m.starts_with("image/"));
@@ -32,32 +32,31 @@ pub fn wire_clipboard_image_paste(view: &TextView, note_identifier: String) {
             return glib::Propagation::Proceed;
         }
 
-        let id        = note_identifier.clone();
+        let id = note_identifier.clone();
         let view_weak = view_ref.downgrade();
 
-        clipboard.read_texture_async(
-            gtk::gio::Cancellable::NONE,
-            move |result| {
-                let texture = match result {
-                    Ok(Some(t)) => t,
-                    _           => return,
-                };
-                let dest = match save_texture(&texture, &id) {
-                    Some(p) => p,
-                    None    => return,
-                };
-                let filename = match filename_from_path(&dest) {
-                    Some(f) => f,
-                    None    => return,
-                };
-                if let Some(view) = view_weak.upgrade() {
-                    let buffer = view.buffer();
-                    let mut iter = buffer.iter_at_mark(&buffer.get_insert());
-                    let _ = insert_image_paintable_tagged(&buffer, &view, &mut iter, &dest, &filename);
-                    view.scroll_mark_onscreen(&buffer.get_insert());
-                }
-            },
-        );
+        clipboard.read_texture_async(gtk::gio::Cancellable::NONE, move |result| {
+            let texture = match result {
+                Ok(Some(t)) => t,
+                _ => return,
+            };
+            let dest = match save_texture(&texture, &id) {
+                Some(p) => p,
+                None => return,
+            };
+            let filename = match filename_from_path(&dest) {
+                Some(f) => f,
+                None => return,
+            };
+            if let Some(view) = view_weak.upgrade() {
+                let buffer = view.buffer();
+                let mut iter = buffer.iter_at_mark(&buffer.get_insert());
+                let _ = insert_image_paintable_tagged(
+                    &buffer, &view, &mut iter, &dest, &filename, None,
+                );
+                view.scroll_mark_onscreen(&buffer.get_insert());
+            }
+        });
 
         glib::Propagation::Stop
     });

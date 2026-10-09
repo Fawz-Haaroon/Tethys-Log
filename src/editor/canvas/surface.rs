@@ -20,9 +20,8 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gtk::{
-    prelude::*,
-    Box, FileChooserAction, FileChooserNative, FileFilter, Orientation,
-    ResponseType, ScrolledWindow, TextBuffer, TextView, WrapMode,
+    prelude::*, Box, FileChooserAction, FileChooserNative, FileFilter, Orientation, ResponseType,
+    ScrolledWindow, TextBuffer, TextView, WrapMode,
 };
 
 use crate::{
@@ -32,9 +31,8 @@ use crate::{
             autosave::wire_autosave,
             clipboard_paste::wire_clipboard_image_paste,
             codec::{
-                deserialise_into_buffer, filename_from_path,
-                image_dir_for_note, insert_image_paintable_tagged,
-                insert_video_anchor, serialize_buffer,
+                deserialise_into_buffer, filename_from_path, image_dir_for_note,
+                insert_image_paintable_tagged, insert_video_anchor, serialize_buffer,
             },
             highlight::wire_text_highlight,
             history::DocumentHistory,
@@ -49,19 +47,16 @@ use crate::{
 };
 
 pub struct EditorCanvas {
-    root:            Box,
-    view:            TextView,
-    search:          Rc<SearchBar>,
-    buffer:          TextBuffer,
+    root: Box,
+    view: TextView,
+    search: Rc<SearchBar>,
+    buffer: TextBuffer,
     note_identifier: String,
-    pub vim:         Rc<VimState>,
+    pub vim: Rc<VimState>,
 }
 
 impl EditorCanvas {
-    pub fn new(
-        note:           &NoteDocument,
-        on_mode_change: impl Fn(VimMode) + 'static,
-    ) -> Self {
+    pub fn new(note: &NoteDocument, on_mode_change: impl Fn(VimMode) + 'static) -> Self {
         let buffer = TextBuffer::new(None);
         // GTK's own undo is deliberately left off. It only round-trips raw
         // codepoints -- verified directly against the API that a TextTag
@@ -74,7 +69,7 @@ impl EditorCanvas {
         // deserialise_into_buffer that already loads a note correctly.
         buffer.set_enable_undo(false);
 
-        let view   = TextView::builder()
+        let view = TextView::builder()
             .buffer(&buffer)
             .left_margin(12)
             .right_margin(12)
@@ -88,11 +83,11 @@ impl EditorCanvas {
             .cursor_visible(true)
             .build();
 
-        let raw_content = note.content_nodes()
+        let raw_content = note
+            .content_nodes()
             .first()
             .and_then(|n| match n {
                 crate::document::node::NoteNode::Paragraph(p) => Some(p.as_str()),
-                _ => None,
             })
             .unwrap_or("");
 
@@ -151,9 +146,15 @@ impl EditorCanvas {
                 &view,
                 vim_state.clone(),
                 on_mode_change,
-                move || { s1.open(); },
-                move || { s2.go_next(); },
-                move || { s3.go_prev(); },
+                move || {
+                    s1.open();
+                },
+                move || {
+                    s2.go_next();
+                },
+                move || {
+                    s3.go_prev();
+                },
             );
         }
 
@@ -181,36 +182,63 @@ impl EditorCanvas {
         }
     }
 
-    pub fn widget(&self)          -> &Box        { &self.root }
-    pub fn open_search(&self)                    { self.search.open(); }
-    pub fn close_search(&self)                   { self.search.close(); }
-    pub fn search_is_open(&self)  -> bool        { self.search.is_open() }
-    pub fn buffer(&self)          -> &TextBuffer { &self.buffer }
-    pub fn note_identifier(&self) -> &str        { &self.note_identifier }
+    pub fn widget(&self) -> &Box {
+        &self.root
+    }
+    pub fn open_search(&self) {
+        self.search.open();
+    }
+    pub fn close_search(&self) {
+        self.search.close();
+    }
+    pub fn search_is_open(&self) -> bool {
+        self.search.is_open()
+    }
+    pub fn buffer(&self) -> &TextBuffer {
+        &self.buffer
+    }
+    pub fn note_identifier(&self) -> &str {
+        &self.note_identifier
+    }
 
     /// Open a FileChooserNative for images and insert at cursor.
     /// Called by TabController when the "Image" button in the status bar is clicked.
     pub fn trigger_attach_image(&self) {
-        let win = self.root.root().and_then(|r| r.downcast::<gtk::Window>().ok());
-        open_image_chooser(&self.buffer, &self.view, &self.note_identifier, win.as_ref());
+        let win = self
+            .root
+            .root()
+            .and_then(|r| r.downcast::<gtk::Window>().ok());
+        open_image_chooser(
+            &self.buffer,
+            &self.view,
+            &self.note_identifier,
+            win.as_ref(),
+        );
     }
 
     /// Open a FileChooserNative for videos and insert at cursor.
     /// Called by TabController when the "Video" button in the status bar is clicked.
     pub fn trigger_attach_video(&self) {
-        let win = self.root.root().and_then(|r| r.downcast::<gtk::Window>().ok());
-        open_video_chooser(&self.buffer, &self.view, &self.note_identifier, win.as_ref());
+        let win = self
+            .root
+            .root()
+            .and_then(|r| r.downcast::<gtk::Window>().ok());
+        open_video_chooser(
+            &self.buffer,
+            &self.view,
+            &self.note_identifier,
+            win.as_ref(),
+        );
     }
 }
-
 
 // ── image file chooser ────────────────────────────────────────────────────────
 
 fn open_image_chooser(
-    buffer:  &TextBuffer,
-    view:    &TextView,
+    buffer: &TextBuffer,
+    view: &TextView,
     note_id: &str,
-    parent:  Option<&gtk::Window>,
+    parent: Option<&gtk::Window>,
 ) {
     let dlg = FileChooserNative::new(
         Some("Attach Image"),
@@ -222,24 +250,35 @@ fn open_image_chooser(
 
     let filter = FileFilter::new();
     filter.set_name(Some("Images"));
-    for mime in ["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif"] {
+    for mime in [
+        "image/png",
+        "image/jpeg",
+        "image/gif",
+        "image/webp",
+        "image/avif",
+    ] {
         filter.add_mime_type(mime);
     }
     dlg.add_filter(&filter);
 
-    let buf  = buffer.clone();
-    let vw   = view.clone();
-    let id   = note_id.to_string();
+    let buf = buffer.clone();
+    let vw = view.clone();
+    let id = note_id.to_string();
     let weak = dlg.downgrade();
 
     dlg.connect_response(move |_, resp| {
-        let d = match weak.upgrade() { Some(x) => x, None => return };
+        let d = match weak.upgrade() {
+            Some(x) => x,
+            None => return,
+        };
         if resp == ResponseType::Accept {
             if let Some(path) = d.file().and_then(|f| f.path()) {
                 if let Ok(stored) = import_image(&id, &path) {
                     if let Some(fname) = filename_from_path(&stored) {
                         let mut iter = buf.iter_at_mark(&buf.get_insert());
-                        let _ = insert_image_paintable_tagged(&buf, &vw, &mut iter, &stored, &fname);
+                        let _ = insert_image_paintable_tagged(
+                            &buf, &vw, &mut iter, &stored, &fname, None,
+                        );
                         vw.scroll_mark_onscreen(&buf.get_insert());
                     }
                 }
@@ -251,14 +290,13 @@ fn open_image_chooser(
     dlg.show();
 }
 
-
 // ── video file chooser ────────────────────────────────────────────────────────
 
 fn open_video_chooser(
-    buffer:  &TextBuffer,
-    view:    &TextView,
+    buffer: &TextBuffer,
+    view: &TextView,
     note_id: &str,
-    parent:  Option<&gtk::Window>,
+    parent: Option<&gtk::Window>,
 ) {
     let dlg = FileChooserNative::new(
         Some("Attach Video"),
@@ -271,24 +309,33 @@ fn open_video_chooser(
     let filter = FileFilter::new();
     filter.set_name(Some("Videos"));
     for mime in [
-        "video/mp4", "video/x-matroska", "video/webm",
-        "video/quicktime", "video/x-msvideo", "video/ogg",
-    ] { filter.add_mime_type(mime); }
+        "video/mp4",
+        "video/x-matroska",
+        "video/webm",
+        "video/quicktime",
+        "video/x-msvideo",
+        "video/ogg",
+    ] {
+        filter.add_mime_type(mime);
+    }
     dlg.add_filter(&filter);
 
-    let buf  = buffer.clone();
-    let vw   = view.clone();
-    let id   = note_id.to_string();
+    let buf = buffer.clone();
+    let vw = view.clone();
+    let id = note_id.to_string();
     let weak = dlg.downgrade();
 
     dlg.connect_response(move |_, resp| {
-        let d = match weak.upgrade() { Some(x) => x, None => return };
+        let d = match weak.upgrade() {
+            Some(x) => x,
+            None => return,
+        };
         if resp == ResponseType::Accept {
             if let Some(path) = d.file().and_then(|f| f.path()) {
                 if let Ok(stored) = import_video(&id, &path) {
                     if let Some(fname) = filename_from_path(&stored) {
                         let mut iter = buf.iter_at_mark(&buf.get_insert());
-                        insert_video_anchor(&buf, &vw, &mut iter, &stored, &fname);
+                        insert_video_anchor(&buf, &vw, &mut iter, &stored, &fname, None);
                         vw.scroll_mark_onscreen(&buf.get_insert());
                     }
                 }

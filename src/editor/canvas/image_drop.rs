@@ -24,7 +24,7 @@ pub fn wire_image_drop(view: &TextView, note_identifier: String) {
 
     drop_tgt.connect_drop(move |_, value, _, _| {
         let uri_list = match value.get::<String>() {
-            Ok(s)  => s,
+            Ok(s) => s,
             Err(_) => return false,
         };
 
@@ -36,37 +36,39 @@ pub fn wire_image_drop(view: &TextView, note_identifier: String) {
 
         let path = match path {
             Some(p) => p,
-            None    => return false,
+            None => return false,
         };
 
         if is_image_path(&path) {
             let stored = match import_image(&note_identifier, &path) {
-                Ok(p)  => p,
+                Ok(p) => p,
                 Err(_) => return false,
             };
             let filename = match filename_from_path(&stored) {
                 Some(f) => f,
-                None    => return false,
+                None => return false,
             };
-            let buffer   = view_ref.buffer();
+            let buffer = view_ref.buffer();
             let mut iter = buffer.iter_at_mark(&buffer.get_insert());
-            let _ = insert_image_paintable_tagged(&buffer, &view_ref, &mut iter, &stored, &filename);
+            let _ = insert_image_paintable_tagged(
+                &buffer, &view_ref, &mut iter, &stored, &filename, None,
+            );
             view_ref.scroll_mark_onscreen(&buffer.get_insert());
             return true;
         }
 
         if is_video_path(&path) {
             let stored = match import_video(&note_identifier, &path) {
-                Ok(p)  => p,
+                Ok(p) => p,
                 Err(_) => return false,
             };
             let filename = match filename_from_path(&stored) {
                 Some(f) => f,
-                None    => return false,
+                None => return false,
             };
-            let buffer   = view_ref.buffer();
+            let buffer = view_ref.buffer();
             let mut iter = buffer.iter_at_mark(&buffer.get_insert());
-            insert_video_anchor(&buffer, &view_ref, &mut iter, &stored, &filename);
+            insert_video_anchor(&buffer, &view_ref, &mut iter, &stored, &filename, None);
             view_ref.scroll_mark_onscreen(&buffer.get_insert());
             return true;
         }

@@ -25,10 +25,10 @@ pub fn wire_url_paste(view: &TextView) {
 
         let display = match gdk::Display::default() {
             Some(d) => d,
-            None    => return glib::Propagation::Proceed,
+            None => return glib::Propagation::Proceed,
         };
         let clipboard = display.clipboard();
-        let formats   = clipboard.formats();
+        let formats = clipboard.formats();
 
         // image pastes handled by clipboard_paste.rs — don't interfere
         let has_image = formats.contains_type(gdk::Texture::static_type())
@@ -37,44 +37,42 @@ pub fn wire_url_paste(view: &TextView) {
             return glib::Propagation::Proceed;
         }
 
-        let has_text = formats.mime_types().iter().any(|m| {
-            m.starts_with("text/plain") || *m == "UTF8_STRING" || *m == "STRING"
-        });
+        let has_text = formats
+            .mime_types()
+            .iter()
+            .any(|m| m.starts_with("text/plain") || *m == "UTF8_STRING" || *m == "STRING");
         if !has_text {
             return glib::Propagation::Proceed;
         }
 
         let view_weak = view_ref.downgrade();
 
-        clipboard.read_text_async(
-            gtk::gio::Cancellable::NONE,
-            move |result| {
-                let text = match result {
-                    Ok(Some(t)) => t.to_string(),
-                    _           => return,
-                };
+        clipboard.read_text_async(gtk::gio::Cancellable::NONE, move |result| {
+            let text = match result {
+                Ok(Some(t)) => t.to_string(),
+                _ => return,
+            };
 
-                let view = match view_weak.upgrade() {
-                    Some(v) => v,
-                    None    => return,
-                };
+            let view = match view_weak.upgrade() {
+                Some(v) => v,
+                None => return,
+            };
 
-                match classify_url(text.trim()) {
-                    Some(EmbedKind::YouTube { watch_url, .. }) |
-                    Some(EmbedKind::Generic { watch_url, .. }) => {
-                        let buffer   = view.buffer();
-                        let mut iter = buffer.iter_at_mark(&buffer.get_insert());
-                        insert_embed_anchor(&buffer, &view, &mut iter, &watch_url);
-                        view.scroll_mark_onscreen(&buffer.get_insert());
-                    }
-                    None => {
-                        let buffer = view.buffer();
-                        buffer.delete_selection(true, true);
-                        buffer.insert_at_cursor(&text);
-                    }
+            match classify_url(text.trim()) {
+                Some(EmbedKind::YouTube { watch_url, .. })
+                | Some(EmbedKind::Generic { watch_url, .. }) => {
+                    let buffer = view.buffer();
+                    let mut iter = buffer.iter_at_mark(&buffer.get_insert());
+                    insert_embed_anchor(&buffer, &view, &mut iter, &watch_url, None);
+                    view.scroll_mark_onscreen(&buffer.get_insert());
                 }
-            },
-        );
+                None => {
+                    let buffer = view.buffer();
+                    buffer.delete_selection(true, true);
+                    buffer.insert_at_cursor(&text);
+                }
+            }
+        });
 
         glib::Propagation::Stop
     });
