@@ -1,11 +1,18 @@
 use std::{cell::RefCell, rc::Rc};
 
-use gtk::{prelude::*, gio, Application, ApplicationWindow};
 use gtk::glib;
+use gtk::{gio, prelude::*, Application, ApplicationWindow};
 
 use crate::{
-    app::{actions, keybindings, zoom::{load_base_theme, ZoomState}},
-    editor::{tabs::TabController, workspace_view::WorkspaceView},
+    app::{
+        actions, keybindings,
+        zoom::{load_base_theme, ZoomState},
+    },
+    editor::{
+        canvas::{embed_widget, viewer},
+        tabs::TabController,
+        workspace_view::WorkspaceView,
+    },
     storage::session::SessionStore,
 };
 
@@ -33,15 +40,19 @@ pub fn build_window(app: &Application) -> Rc<TabController> {
     let session = SessionStore::load();
     let workspace_view = WorkspaceView::new(session);
     let tabs = workspace_view.controller();
+    let viewer_root = viewer::install(workspace_view.widget());
     let window = ApplicationWindow::builder()
         .application(app)
         .title("Tethys Log")
         .default_width(1350)
         .default_height(820)
-        .child(workspace_view.widget())
+        .child(&viewer_root)
         .build();
     actions::register_window_actions(&window);
-    window.connect_close_request(|_| glib::Propagation::Proceed);
+    window.connect_close_request(|_| {
+        embed_widget::cleanup_temp_downloads();
+        glib::Propagation::Proceed
+    });
     keybindings::attach(&window, tabs.clone(), zoom);
     ACTIVE_CONTROLLER.with(|cell| *cell.borrow_mut() = Some(tabs.clone()));
     window.present();
