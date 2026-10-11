@@ -1,15 +1,13 @@
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
-use gtk::{TextBuffer, prelude::*};
-use glib::{ControlFlow, timeout_add_local};
+use glib::{timeout_add_local, ControlFlow};
+use gtk::{prelude::*, TextBuffer};
 
 use crate::{
-    document::note::NoteDocument,
     document::node::NoteNode,
+    document::note::NoteDocument,
     editor::canvas::{
-        codec::serialize_buffer,
-        highlight::is_highlight_tag,
-        history::DocumentHistory,
+        codec::serialize_buffer, highlight::is_highlight_tag, history::DocumentHistory,
     },
     storage::notes::NoteStore,
 };
@@ -41,61 +39,64 @@ const AUTOSAVE_QUIET_MS: u64 = 700;
 /// reapplies its own tags on every keystroke -- doesn't schedule a save on
 /// top of the one `changed` already scheduled for that keystroke.
 pub fn wire_autosave(
-    buffer:          &TextBuffer,
+    buffer: &TextBuffer,
     note_identifier: String,
-    title:           String,
-    source_path:     Option<PathBuf>,
-    history:         Rc<RefCell<DocumentHistory>>,
+    title: String,
+    source_path: Option<PathBuf>,
+    history: Rc<RefCell<DocumentHistory>>,
 ) {
     let generation = Rc::new(RefCell::new(0u64));
-    let watched    = buffer.clone();
+    let watched = buffer.clone();
 
     let schedule_save: Rc<dyn Fn()> = {
-        let generation      = generation.clone();
-        let watched         = watched.clone();
+        let generation = generation.clone();
+        let watched = watched.clone();
         let note_identifier = note_identifier.clone();
-        let title           = title.clone();
-        let source_path     = source_path.clone();
-        let history         = history.clone();
+        let title = title.clone();
+        let source_path = source_path.clone();
+        let history = history.clone();
 
         Rc::new(move || {
             *generation.borrow_mut() += 1;
             let pending = *generation.borrow();
 
-            let generation      = generation.clone();
-            let watched         = watched.clone();
+            let generation = generation.clone();
+            let watched = watched.clone();
             let note_identifier = note_identifier.clone();
-            let title           = title.clone();
-            let source_path     = source_path.clone();
-            let history         = history.clone();
+            let title = title.clone();
+            let source_path = source_path.clone();
+            let history = history.clone();
 
-            timeout_add_local(std::time::Duration::from_millis(AUTOSAVE_QUIET_MS), move || {
-                if *generation.borrow() != pending {
-                    return ControlFlow::Break;
-                }
+            timeout_add_local(
+                std::time::Duration::from_millis(AUTOSAVE_QUIET_MS),
+                move || {
+                    if *generation.borrow() != pending {
+                        return ControlFlow::Break;
+                    }
 
-                // serialize_buffer encodes paintables as sentinel-bracketed
-                // markers (e.g. \u{E000}img:filename\u{E000}) and highlight
-                // runs the same way (see highlight.rs) so both survive the
-                // save/load round-trip.
-                let content = serialize_buffer(&watched);
+                    // serialize_buffer encodes paintables as sentinel-bracketed
+                    // markers (e.g. \u{E000}img:filename\u{E000}) and highlight
+                    // runs the same way (see highlight.rs) so both survive the
+                    // save/load round-trip.
+                    let content = serialize_buffer(&watched);
 
-                // Record this settled state as a possible undo step BEFORE
-                // reading the snapshot list back out, so the entry that was
-                // just captured (if any) is included in what gets written.
-                history.borrow_mut().record_settled_state(content.clone());
-                let past_states = history.borrow().persisted_snapshots();
+                    // Record this settled state as a possible undo step BEFORE
+                    // reading the snapshot list back out, so the entry that was
+                    // just captured (if any) is included in what gets written.
+                    history.borrow_mut().record_settled_state(content.clone());
+                    let past_states = history.borrow().persisted_snapshots();
 
-                let mut draft = NoteDocument::new(note_identifier.clone(), title.clone());
-                if let Some(ref path) = source_path {
-                    draft = draft.with_source_path(path.clone());
-                }
-                draft.replace_content(vec![NoteNode::Paragraph(content)]);
-                draft.set_history(past_states);
-                NoteStore::persist(&draft);
+                    let mut draft = NoteDocument::new(note_identifier.clone(), title.clone());
+                    if let Some(ref path) = source_path {
+                        draft = draft.with_source_path(path.clone());
+                    }
+                    draft.replace_content(vec![NoteNode::Paragraph(content)]);
+                    draft.set_history(past_states);
+                    NoteStore::persist(&draft);
 
-                ControlFlow::Break
-            });
+                    ControlFlow::Break
+                },
+            );
         })
     };
 

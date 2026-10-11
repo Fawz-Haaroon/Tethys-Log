@@ -31,38 +31,37 @@ use gtk::{gdk, prelude::*, Box, Button, Label, Orientation, Popover, TextIter, T
 // highlight run that was open has ended, resume plain text". This mirrors
 // how a run of highlighted text works in the GTK buffer itself: tags start,
 // cover a span, and stop; there is nothing to bracket at the stop point.
-pub const HL_OPEN:  char = '\u{E003}';
+pub const HL_OPEN: char = '\u{E003}';
 pub const HL_CLOSE: char = '\u{E004}';
 
 // (tag-name, colour hex, swatch glyph)
 const FG_SWATCHES: &[(&str, &str, &str)] = &[
     ("hl-fg-default", "#d8dee9", "●"), // almost-white
-    ("hl-fg-black",   "#111111", "●"),
-    ("hl-fg-yellow",  "#ffd060", "●"),
-    ("hl-fg-green",   "#7ec8a0", "●"),
-    ("hl-fg-red",     "#ff6b6b", "●"),
-    ("hl-fg-blue",    "#61afef", "●"),
-    ("hl-fg-purple",  "#c678dd", "●"),
-    ("hl-fg-orange",  "#e5a050", "●"),
-    ("hl-fg-teal",    "#56b6c2", "●"),
-    ("hl-fg-pink",    "#e06c75", "●"),
+    ("hl-fg-black", "#111111", "●"),
+    ("hl-fg-yellow", "#ffd060", "●"),
+    ("hl-fg-green", "#7ec8a0", "●"),
+    ("hl-fg-red", "#ff6b6b", "●"),
+    ("hl-fg-blue", "#61afef", "●"),
+    ("hl-fg-purple", "#c678dd", "●"),
+    ("hl-fg-orange", "#e5a050", "●"),
+    ("hl-fg-teal", "#56b6c2", "●"),
+    ("hl-fg-pink", "#e06c75", "●"),
 ];
 // Catpuccin based custom color palette
 const BG_SWATCHES: &[(&str, &str, &str)] = &[
-    ("hl-bg-none",   "transparent", "□"), // no backing TextTag — see register_highlight_tags
-    ("hl-bg-white",  "#ffffff", "▁"),
+    ("hl-bg-none", "transparent", "□"), // no backing TextTag — see register_highlight_tags
+    ("hl-bg-white", "#ffffff", "▁"),
     ("hl-bg-yellow", "#f9d982", "▁"),
-    ("hl-bg-green",  "#97d5a5", "▁"),
-    ("hl-bg-pink",   "#e8a2c7", "▁"),
+    ("hl-bg-green", "#97d5a5", "▁"),
+    ("hl-bg-pink", "#e8a2c7", "▁"),
     ("hl-bg-orange", "#e8b07a", "▁"),
-    ("hl-bg-blue",   "#7aaee6", "▁"),
+    ("hl-bg-blue", "#7aaee6", "▁"),
     ("hl-bg-purple", "#b694d6", "▁"),
-    ("hl-bg-teal",   "#84d4cc", "▁"),
-    ("hl-bg-red",    "#e28d96", "▁"),
+    ("hl-bg-teal", "#84d4cc", "▁"),
+    ("hl-bg-red", "#e28d96", "▁"),
 ];
 
 const NONE_SWATCH: &str = "hl-bg-none";
-
 
 pub fn wire_text_highlight(view: &TextView) {
     let buffer = view.buffer();
@@ -79,9 +78,9 @@ pub fn wire_text_highlight(view: &TextView) {
     popover.set_has_arrow(true);
     popover.set_position(gtk::PositionType::Bottom);
 
-    let popover_ref  = popover.clone();
+    let popover_ref = popover.clone();
     let buf_for_gate = buffer.clone();
-    let sel_writer   = saved_sel;
+    let sel_writer = saved_sel;
 
     let gesture = gtk::GestureClick::new();
     gesture.set_button(gdk::BUTTON_SECONDARY);
@@ -91,7 +90,9 @@ pub fn wire_text_highlight(view: &TextView) {
     // subsequent mouse clicks inside the popover.
     gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
     gesture.connect_pressed(move |_gest, _n, x, y| {
-        let Some((start, end)) = buf_for_gate.selection_bounds() else { return };
+        let Some((start, end)) = buf_for_gate.selection_bounds() else {
+            return;
+        };
         // Persist the selection as plain offsets — the buffer content won't
         // change between right-click and swatch click, so offsets stay valid.
         *sel_writer.borrow_mut() = Some((start.offset(), end.offset()));
@@ -101,7 +102,6 @@ pub fn wire_text_highlight(view: &TextView) {
     });
     view.add_controller(gesture);
 }
-
 
 // ── Tag registration ──────────────────────────────────────────────────────────
 
@@ -155,7 +155,9 @@ pub fn register_highlight_tags(buffer: &gtk::TextBuffer) {
 /// tags on every keystroke and would otherwise trigger constant redundant
 /// saves.
 pub fn is_highlight_tag(tag: &TextTag) -> bool {
-    tag.name().map(|n| is_highlight_tag_name(&n)).unwrap_or(false)
+    tag.name()
+        .map(|n| is_highlight_tag_name(&n))
+        .unwrap_or(false)
 }
 
 fn is_highlight_tag_name(name: &str) -> bool {
@@ -178,11 +180,10 @@ pub fn highlight_tag_names(iter: &TextIter) -> Vec<String> {
     names
 }
 
-
 // ── Popover UI ────────────────────────────────────────────────────────────────
 
 fn build_colour_popover(
-    buffer:   &gtk::TextBuffer,
+    buffer: &gtk::TextBuffer,
     saved_sel: Rc<RefCell<Option<(i32, i32)>>>,
 ) -> Popover {
     let popover = Popover::new();
@@ -203,7 +204,12 @@ fn build_colour_popover(
         .build();
     fg_label.add_css_class("hl-section-label");
     root.append(&fg_label);
-    root.append(&swatch_row(buffer, FG_SWATCHES, &popover, saved_sel.clone()));
+    root.append(&swatch_row(
+        buffer,
+        FG_SWATCHES,
+        &popover,
+        saved_sel.clone(),
+    ));
 
     let bg_label = Label::builder()
         .label("Highlight")
@@ -211,7 +217,12 @@ fn build_colour_popover(
         .build();
     bg_label.add_css_class("hl-section-label");
     root.append(&bg_label);
-    root.append(&swatch_row(buffer, BG_SWATCHES, &popover, saved_sel.clone()));
+    root.append(&swatch_row(
+        buffer,
+        BG_SWATCHES,
+        &popover,
+        saved_sel.clone(),
+    ));
 
     let sep = gtk::Separator::new(Orientation::Horizontal);
     root.append(&sep);
@@ -234,9 +245,9 @@ fn build_colour_popover(
 }
 
 fn swatch_row(
-    buffer:    &gtk::TextBuffer,
-    swatches:  &'static [(&'static str, &'static str, &'static str)],
-    popover:   &Popover,
+    buffer: &gtk::TextBuffer,
+    swatches: &'static [(&'static str, &'static str, &'static str)],
+    popover: &Popover,
     saved_sel: Rc<RefCell<Option<(i32, i32)>>>,
 ) -> Box {
     let row = Box::builder()
@@ -270,17 +281,12 @@ fn swatch_row(
     row
 }
 
-
 // ── Tag application / removal ─────────────────────────────────────────────────
 
-fn apply_tag_to_saved_sel(
-    buffer:   &gtk::TextBuffer,
-    tag_name: &str,
-    saved:    &Option<(i32, i32)>,
-) {
+fn apply_tag_to_saved_sel(buffer: &gtk::TextBuffer, tag_name: &str, saved: &Option<(i32, i32)>) {
     let Some((s_off, e_off)) = *saved else { return };
     let start = buffer.iter_at_offset(s_off);
-    let end   = buffer.iter_at_offset(e_off);
+    let end = buffer.iter_at_offset(e_off);
 
     if tag_name == NONE_SWATCH {
         // No backing tag to apply — "none" just clears whatever background
@@ -289,7 +295,9 @@ fn apply_tag_to_saved_sel(
         return;
     }
 
-    let Some(tag) = buffer.tag_table().lookup(tag_name) else { return };
+    let Some(tag) = buffer.tag_table().lookup(tag_name) else {
+        return;
+    };
 
     // Remove conflicting tags of the same kind first.
     let conflict_list: &[(&str, &str, &str)] = if tag_name.starts_with("hl-fg-") {
@@ -314,7 +322,7 @@ fn apply_tag_to_saved_sel(
 fn clear_all_highlight_tags(buffer: &gtk::TextBuffer, saved: &Option<(i32, i32)>) {
     let Some((s_off, e_off)) = *saved else { return };
     let start = buffer.iter_at_offset(s_off);
-    let end   = buffer.iter_at_offset(e_off);
+    let end = buffer.iter_at_offset(e_off);
     remove_swatches(buffer, FG_SWATCHES, &start, &end);
     remove_swatches(buffer, BG_SWATCHES, &start, &end);
 }
@@ -332,7 +340,6 @@ fn remove_swatches(
         }
     }
 }
-
 
 // ── CSS ───────────────────────────────────────────────────────────────────────
 pub const HIGHLIGHT_CSS: &str = r#"

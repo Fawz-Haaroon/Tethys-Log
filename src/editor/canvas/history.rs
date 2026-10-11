@@ -39,9 +39,9 @@ use crate::editor::canvas::codec::deserialise_into_buffer;
 pub const MAX_HISTORY_SNAPSHOTS_PER_NOTE: usize = 300;
 
 pub struct DocumentHistory {
-    past:     VecDeque<String>, // oldest..newest; back() is the most recent prior state
-    future:   Vec<String>,      // redo stack, this session only
-    baseline: String,           // the document's current settled state
+    past: VecDeque<String>, // oldest..newest; back() is the most recent prior state
+    future: Vec<String>,    // redo stack, this session only
+    baseline: String,       // the document's current settled state
 }
 
 impl DocumentHistory {
@@ -54,8 +54,8 @@ impl DocumentHistory {
             persisted_past.drain(..excess);
         }
         Self {
-            past:     persisted_past.into(),
-            future:   Vec::new(),
+            past: persisted_past.into(),
+            future: Vec::new(),
             baseline: initial,
         }
     }
@@ -71,7 +71,8 @@ impl DocumentHistory {
         if current == self.baseline {
             return;
         }
-        self.past.push_back(std::mem::replace(&mut self.baseline, current));
+        self.past
+            .push_back(std::mem::replace(&mut self.baseline, current));
         if self.past.len() > MAX_HISTORY_SNAPSHOTS_PER_NOTE {
             self.past.pop_front();
         }
@@ -82,7 +83,8 @@ impl DocumentHistory {
     /// start of history.
     fn step_back(&mut self) -> Option<String> {
         let previous = self.past.pop_back()?;
-        self.future.push(std::mem::replace(&mut self.baseline, previous.clone()));
+        self.future
+            .push(std::mem::replace(&mut self.baseline, previous.clone()));
         Some(previous)
     }
 
@@ -90,7 +92,8 @@ impl DocumentHistory {
     /// nothing's been undone this session.
     fn step_forward(&mut self) -> Option<String> {
         let next = self.future.pop()?;
-        self.past.push_back(std::mem::replace(&mut self.baseline, next.clone()));
+        self.past
+            .push_back(std::mem::replace(&mut self.baseline, next.clone()));
         if self.past.len() > MAX_HISTORY_SNAPSHOTS_PER_NOTE {
             self.past.pop_front();
         }
@@ -104,7 +107,6 @@ impl DocumentHistory {
     }
 }
 
-
 // ── GTK-facing entry points ─────────────────────────────────────────────────
 //
 // The buffer swap itself lives here rather than on DocumentHistory so the
@@ -112,13 +114,23 @@ impl DocumentHistory {
 // tested) without a live GTK buffer. Same split codec.rs already draws
 // between plain string handling and its GTK insertion helpers.
 
-pub fn undo(history: &Rc<RefCell<DocumentHistory>>, buffer: &TextBuffer, view: &TextView, image_dir: &Path) {
+pub fn undo(
+    history: &Rc<RefCell<DocumentHistory>>,
+    buffer: &TextBuffer,
+    view: &TextView,
+    image_dir: &Path,
+) {
     if let Some(snapshot) = history.borrow_mut().step_back() {
         restore_snapshot(buffer, view, image_dir, &snapshot);
     }
 }
 
-pub fn redo(history: &Rc<RefCell<DocumentHistory>>, buffer: &TextBuffer, view: &TextView, image_dir: &Path) {
+pub fn redo(
+    history: &Rc<RefCell<DocumentHistory>>,
+    buffer: &TextBuffer,
+    view: &TextView,
+    image_dir: &Path,
+) {
     if let Some(snapshot) = history.borrow_mut().step_forward() {
         restore_snapshot(buffer, view, image_dir, &snapshot);
     }
