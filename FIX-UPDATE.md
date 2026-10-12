@@ -1,1 +1,0 @@
-A chunk of editor/canvas/* leaks GObjects through reference cycles. GTK doesn't garbage-collect, it refcounts: so when a closure that's owned by a signal or controller on object X also holds a strong clone of X itself, the cycle never resolves, dispose never fires, and the object sits in memory forever, unreachable from the UI but never freed.
